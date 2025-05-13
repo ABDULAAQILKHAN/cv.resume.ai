@@ -33,6 +33,7 @@ const extractResumeDataFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await extractResumeDataPrompt(input);
+    console.log("ai output",output)
     // Ensure output conforms to schema, especially for optional fields that might be undefined
     // Zod `parse` will add default values for optional fields if they are not present, 
     // but LLM might return null explicitly.

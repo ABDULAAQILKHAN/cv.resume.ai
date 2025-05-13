@@ -40,21 +40,23 @@ export default function ResumeBuilderPage() {
   const handleFileUpload = async (file: File) => {
     setIsLoadingAI(true);
     try {
+
+      console.log("here")
       const resumeDataUri = await fileToDataUri(file);
       const extractedData = await extractResumeData({ resumeDataUri });
-      
+      console.log(extractedData)
       // Ensure data structure aligns with form, especially for empty optional fields
-      const processedData: ExtractResumeDataOutput = {
-        personalDetails: extractedData.personalDetails || defaultResumeData.personalDetails,
-        experience: extractedData.experience || [],
-        education: extractedData.education || [],
-        // AI returns skills as string[], form expects { value: string }[] after useFieldArray
-        // So we map it here.
-        // @ts-ignore
-        skills: extractedData.skills ? extractedData.skills.map(skill => ({ value: skill })) : [],
-      };
+      // const processedData: ExtractResumeDataOutput = {
+      //   personalDetails: extractedData.personalDetails || defaultResumeData.personalDetails,
+      //   experience: extractedData.experience || [],
+      //   education: extractedData.education || [],
+      //   // AI returns skills as string[], form expects { value: string }[] after useFieldArray
+      //   // So we map it here.
+      //   // @ts-ignore
+      //   skills: extractedData.skills ? extractedData.skills.map(skill => ({ value: skill })) : [],
+      // };
       
-      form.reset(processedData);
+      //form.reset(processedData);
       toast({
         title: "Success!",
         description: "Resume data extracted and pre-filled.",

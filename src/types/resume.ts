@@ -14,7 +14,7 @@ export type ExtractResumeDataInput = z.infer<typeof ExtractResumeDataInputSchema
 export const ExtractResumeDataOutputSchema = z.object({
   personalDetails: z.object({
     name: z.string().describe('The name of the person.'),
-    email: z.string().email().describe('The email address of the person.'),
+    email: z.string().describe('The email address of the person.'), // Removed .email()
     phone: z.string().describe('The phone number of the person.'),
     linkedin: z.string().optional().describe('The LinkedIn profile URL of the person.'),
   }).optional().describe('Personal details extracted from the resume.'),
@@ -54,3 +54,4 @@ export const defaultResumeData: ExtractResumeDataOutput = {
 export type Experience = z.infer<typeof ExtractResumeDataOutputSchema.shape.experience.element>;
 // Define type for individual education item
 export type Education = z.infer<typeof ExtractResumeDataOutputSchema.shape.education.element>;
+
