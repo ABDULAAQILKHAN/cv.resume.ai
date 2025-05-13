@@ -72,8 +72,6 @@ export default function ResumeBuilderPage() {
     }
   };
 
-  // This function is technically not needed if preview updates via form.watch()
-  // But can be kept if there's a specific "generate preview" button action later.
   const handleFormSubmit = (values: ExtractResumeDataOutput) => {
     // Data is already in `watchedData` for preview
     console.log("Form submitted (or data updated):", values);
@@ -82,6 +80,16 @@ export default function ResumeBuilderPage() {
         description: "Your resume preview has been updated with the latest information.",
     });
   };
+  
+  // Renamed from handleSave to handleFormSave to match prop
+  const handleFormSave = (values: ExtractResumeDataOutput) => {
+    console.log("Resume data saved/updated:", values);
+    toast({
+        title: "Resume Saved",
+        description: "Your resume data has been updated.",
+    });
+  };
+
 
   const handleDownload = () => {
     window.print();
@@ -147,13 +155,5 @@ export default function ResumeBuilderPage() {
       </footer>
     </div>
   );
-
-  // Placeholder for onSubmit if ResumeForm has its own submit button
-  function handleSave(values: ExtractResumeDataOutput) {
-    console.log("Resume data saved/updated:", values);
-    toast({
-        title: "Resume Saved",
-        description: "Your resume data has been updated.",
-    });
-  }
 }
+

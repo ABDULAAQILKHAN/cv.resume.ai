@@ -1,52 +1,25 @@
-// This is an AI-powered function to extract data from a resume and pre-fill a form.
-
 'use server';
+/**
+ * @fileOverview AI flow to extract data from a resume.
+ *
+ * - extractResumeData - A function that handles the resume data extraction process.
+ */
 
 import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+// Import schemas and types from src/types/resume.ts
+import type { ExtractResumeDataInput, ExtractResumeDataOutput } from '@/types/resume';
+import { ExtractResumeDataInputSchema, ExtractResumeDataOutputSchema } from '@/types/resume';
 
-const ExtractResumeDataInputSchema = z.object({
-  resumeDataUri: z
-    .string()
-    .describe(
-      "The resume file, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
-    ),
-});
-export type ExtractResumeDataInput = z.infer<typeof ExtractResumeDataInputSchema>;
 
-const ExtractResumeDataOutputSchema = z.object({
-  personalDetails: z.object({
-    name: z.string().describe('The name of the person.'),
-    email: z.string().email().describe('The email address of the person.'),
-    phone: z.string().describe('The phone number of the person.'),
-    linkedin: z.string().optional().describe('The LinkedIn profile URL of the person.'),
-  }).optional().describe('Personal details extracted from the resume.'),
-  experience: z.array(z.object({
-    title: z.string().describe('The job title.'),
-    company: z.string().describe('The company name.'),
-    startDate: z.string().describe('The start date of the job.'),
-    endDate: z.string().optional().describe('The end date of the job, or null if still employed.'),
-    description: z.string().describe('The job description.'),
-  })).optional().describe('Work experience extracted from the resume.'),
-  education: z.array(z.object({
-    institution: z.string().describe('The name of the educational institution.'),
-    degree: z.string().describe('The degree obtained.'),
-    startDate: z.string().describe('The start date of the education.'),
-    endDate: z.string().describe('The end date of the education.'),
-    description: z.string().optional().describe('Additional details about the education.'),
-  })).optional().describe('Education history extracted from the resume.'),
-  skills: z.array(z.string()).optional().describe('A list of skills extracted from the resume.'),
-});
-export type ExtractResumeDataOutput = z.infer<typeof ExtractResumeDataOutputSchema>;
-
+// Export only the async function
 export async function extractResumeData(input: ExtractResumeDataInput): Promise<ExtractResumeDataOutput> {
   return extractResumeDataFlow(input);
 }
 
 const extractResumeDataPrompt = ai.definePrompt({
   name: 'extractResumeDataPrompt',
-  input: {schema: ExtractResumeDataInputSchema},
-  output: {schema: ExtractResumeDataOutputSchema},
+  input: {schema: ExtractResumeDataInputSchema}, // Use imported schema
+  output: {schema: ExtractResumeDataOutputSchema}, // Use imported schema
   prompt: `You are an expert resume parser. Extract the following information from the resume. If a field can't be found, omit it from the output, but prioritize extracting as much information as possible.
 
 Resume: {{media url=resumeDataUri}}`,
@@ -55,11 +28,17 @@ Resume: {{media url=resumeDataUri}}`,
 const extractResumeDataFlow = ai.defineFlow(
   {
     name: 'extractResumeDataFlow',
-    inputSchema: ExtractResumeDataInputSchema,
-    outputSchema: ExtractResumeDataOutputSchema,
+    inputSchema: ExtractResumeDataInputSchema, // Use imported schema
+    outputSchema: ExtractResumeDataOutputSchema, // Use imported schema
   },
   async input => {
     const {output} = await extractResumeDataPrompt(input);
+    // Ensure output conforms to schema, especially for optional fields that might be undefined
+    // Zod `parse` will add default values for optional fields if they are not present, 
+    // but LLM might return null explicitly.
+    // For simple pass-through, output! is fine if schema matches exactly what LLM provides.
+    // If stricter defaulting is needed, one might do:
+    // return ExtractResumeDataOutputSchema.parse(output || {});
     return output!;
   }
 );
