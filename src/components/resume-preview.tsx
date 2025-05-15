@@ -4,12 +4,19 @@
 import type { ExtractResumeDataOutput } from '@/types/resume';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { User, Briefcase, GraduationCap, Wand2, Mail, Phone, LinkedinIcon, CalendarDays, MapPin } from 'lucide-react';
+import { User, Briefcase, GraduationCap, Wand2, Mail, Phone, LinkedinIcon, CalendarDays, MapPin, LucideReceiptRussianRuble } from 'lucide-react';
 import Image from 'next/image';
 
 interface ResumePreviewProps {
   data: ExtractResumeDataOutput;
 }
+
+type ContactInfo = {
+  name?: string;
+  email?: string;
+  phone?: string;
+  linkedin?: string;
+};
 
 export function ResumePreview({ data }: ResumePreviewProps) {
   const { personalDetails, experience, education, skills } = data;
@@ -26,9 +33,22 @@ export function ResumePreview({ data }: ResumePreviewProps) {
       </Card>
     );
   }
+  function hasAnyContactInfo(info:any): boolean {
+    return !!(info.name || info.email || info.phone || info.linkedin);
+  }
 
+  if(!hasAnyContactInfo(personalDetails)) {
+    return <Card className="resume-preview-card shadow-lg print:shadow-none print:border-none">
+    <div className='flex flex-col justify-center'>
+    <h3 className='py-3 text-center text-muted-foreground self-center'>
+      You will see the preivew here once you start filling the form.
+    </h3>
+    </div>
+  </Card>
+  }
   return (
     <Card className="resume-preview-card shadow-lg print:shadow-none print:border-none">
+
       <CardHeader className="text-center p-6">
         {personalDetails?.name && (
           <CardTitle className="text-3xl font-bold text-primary">{personalDetails.name}</CardTitle>
