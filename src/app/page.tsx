@@ -14,8 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Download, FileText, Loader2 } from 'lucide-react';
-import Image from 'next/image';
-
+// import html2pdf from 'html2pdf.js'; // Removed static import
 
 const fileToDataUri = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -88,9 +87,29 @@ export default function ResumeBuilderPage() {
     });
   };
 
-
-  const handleDownload = () => {
-    window.print();
+  const handleDownload = async () => {
+    console.log("download initiated");
+    try {
+      const html2pdf = (await import('html2pdf.js')).default;
+      const element = document.getElementById('resume'); // Target your resume container
+      if (element) {
+        html2pdf().from(element).save('My_Resume.pdf');
+      } else {
+        console.error("Resume element not found for PDF generation.");
+        toast({
+            title: "Error",
+            description: "Could not find resume content to download.",
+            variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error during PDF download:", error);
+      toast({
+        title: "Download Error",
+        description: "Failed to generate PDF. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -143,12 +162,12 @@ export default function ResumeBuilderPage() {
             </Card>
           </section>
 
-          <section id="preview-section" className="sticky top-28  max-h-[calc(100vh-8rem)] overflow-y-auto rounded-lg shadow-xl border bg-card print:static print:max-h-full print:overflow-visible">
+          <section id="preview-section" className="sticky top-28 max-h-[calc(100vh-8rem)] overflow-y-auto rounded-lg shadow-xl border bg-card make-static-for-print print:max-h-full print:overflow-visible">
              <ResumePreview data={watchedData} />
           </section>
         </div>
       </main>
-       <footer id="page-footer" className="py-6 mt-12 text-center text-muted-foreground border-t">
+       <footer id="page-footer" className="py-6 mt-12 text-center text-muted-foreground border-t print:hidden">
         <p>&copy; {new Date().getFullYear()} ResumeAI. Built with passion.</p>
       </footer>
     </div>

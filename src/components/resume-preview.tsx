@@ -9,6 +9,7 @@ import { User, Briefcase, GraduationCap, Wand2, Mail, Phone, LinkedinIcon, Calen
 
 interface ResumePreviewProps {
   data: ExtractResumeDataOutput;
+  // ref: React.RefObject<HTMLDivElement>;
 }
 
 const SectionTitle: React.FC<{ icon: React.ElementType; title: string }> = ({ icon: Icon, title }) => (
@@ -66,7 +67,7 @@ export function ResumePreview({ data }: ResumePreviewProps) {
   }
 
   return (
-    <Card className="resume-preview-card shadow-lg print:shadow-none print:border-none bg-white">
+    <Card id='resume' className="resume-preview-card shadow-lg print:shadow-none print:border-none bg-white">
       <CardContent className="p-6 print:p-4 space-y-3 print:space-y-2">
         {/* Personal Details */}
         {personalDetails && (personalDetails.name || personalDetails.email || personalDetails.phone || personalDetails.linkedin) && (
