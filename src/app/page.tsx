@@ -91,7 +91,8 @@ export default function ResumeBuilderPage() {
     console.log("download initiated");
     try {
       const html2pdf = (await import('html2pdf.js')).default;
-      const element = document.getElementById('resume'); // Target your resume container
+      const element = document.getElementById('resume');
+      console.log("element",element)
       if (element) {
         html2pdf().from(element).save('My_Resume.pdf');
       } else {
