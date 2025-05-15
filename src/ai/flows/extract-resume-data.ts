@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview AI flow to extract data from a resume.
@@ -20,7 +21,7 @@ const extractResumeDataPrompt = ai.definePrompt({
   name: 'extractResumeDataPrompt',
   input: {schema: ExtractResumeDataInputSchema}, // Use imported schema
   output: {schema: ExtractResumeDataOutputSchema}, // Use imported schema
-  prompt: `You are an expert resume parser. Extract the following information from the resume. If a field can't be found, omit it from the output, but prioritize extracting as much information as possible.
+  prompt: `You are an expert resume parser. Extract the following information from the resume. Prioritize extracting as much information as possible based on the defined output schema. If a field is not present in the resume, omit it or provide a suitable empty/default value as per the schema (e.g., empty array for lists, empty string for optional text).
 
 Resume: {{media url=resumeDataUri}}`,
 });
@@ -33,9 +34,8 @@ const extractResumeDataFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await extractResumeDataPrompt(input);
-    console.log("ai output",output)
     // Ensure output conforms to schema, especially for optional fields that might be undefined
-    // Zod `parse` will add default values for optional fields if they are not present, 
+    // Zod `parse` will add default values for optional fields if they are not present,
     // but LLM might return null explicitly.
     // For simple pass-through, output! is fine if schema matches exactly what LLM provides.
     // If stricter defaulting is needed, one might do:

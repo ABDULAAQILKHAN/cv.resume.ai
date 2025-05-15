@@ -42,16 +42,22 @@ export default function ResumeBuilderPage() {
     try {
       const resumeDataUri = await fileToDataUri(file);
       const extractedData = await extractResumeData({ resumeDataUri });
-      console.log(extractedData)
+      
       // Ensure data structure aligns with form, especially for empty optional fields
+      // and map string arrays to { value: string }[] for useFieldArray
       const processedData: ExtractResumeDataOutput = {
         personalDetails: extractedData.personalDetails || defaultResumeData.personalDetails,
+        summary: extractedData.summary || defaultResumeData.summary,
         experience: extractedData.experience || [],
         education: extractedData.education || [],
-        // AI returns skills as string[], form expects { value: string }[] after useFieldArray
-        // So we map it here.
         // @ts-ignore
         skills: extractedData.skills ? extractedData.skills.map(skill => ({ value: skill })) : [],
+        projects: extractedData.projects || [],
+        certifications: extractedData.certifications || [],
+        // @ts-ignore
+        achievements: extractedData.achievements ? extractedData.achievements.map(ach => ({ value: ach })) : [],
+        // @ts-ignore
+        hobbies: extractedData.hobbies ? extractedData.hobbies.map(hob => ({ value: hob })) : [],
       };
       
       form.reset(processedData);
@@ -71,22 +77,15 @@ export default function ResumeBuilderPage() {
       setIsLoadingAI(false);
     }
   };
-
-  const handleFormSubmit = (values: ExtractResumeDataOutput) => {
-    // Data is already in `watchedData` for preview
-    console.log("Form submitted (or data updated):", values);
-    toast({
-        title: "Resume Updated",
-        description: "Your resume preview has been updated with the latest information.",
-    });
-  };
   
-  // Renamed from handleSave to handleFormSave to match prop
   const handleFormSave = (values: ExtractResumeDataOutput) => {
     console.log("Resume data saved/updated:", values);
+    // This function is called by ResumeForm's onSubmit
+    // The form.watch() already updates `watchedData` for the preview in real-time.
+    // So, a toast message is sufficient here.
     toast({
-        title: "Resume Saved",
-        description: "Your resume data has been updated.",
+        title: "Resume Updated",
+        description: "Your resume data has been updated in the form and preview.",
     });
   };
 
@@ -156,4 +155,3 @@ export default function ResumeBuilderPage() {
     </div>
   );
 }
-
