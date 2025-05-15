@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -115,7 +116,7 @@
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  #input-section, #download-button-container, #page-header .flex-shrink-0 {
+  #input-section, #download-button-container, #page-header .flex-shrink-0, #page-footer {
     display: none !important;
   }
   #preview-section {

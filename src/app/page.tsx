@@ -43,21 +43,23 @@ export default function ResumeBuilderPage() {
       const resumeDataUri = await fileToDataUri(file);
       const extractedData = await extractResumeData({ resumeDataUri });
       
-      // Ensure data structure aligns with form, especially for empty optional fields
-      // and map string arrays to { value: string }[] for useFieldArray
       const processedData: ExtractResumeDataOutput = {
         personalDetails: extractedData.personalDetails || defaultResumeData.personalDetails,
         summary: extractedData.summary || defaultResumeData.summary,
-        experience: extractedData.experience || [],
-        education: extractedData.education || [],
         // @ts-ignore
-        skills: extractedData.skills ? extractedData.skills.map(skill => ({ value: skill })) : [],
-        projects: extractedData.projects || [],
-        certifications: extractedData.certifications || [],
+        experience: (extractedData.experience || []).map(exp => ({...exp})),
         // @ts-ignore
-        achievements: extractedData.achievements ? extractedData.achievements.map(ach => ({ value: ach })) : [],
+        education: (extractedData.education || []).map(edu => ({...edu})),
         // @ts-ignore
-        hobbies: extractedData.hobbies ? extractedData.hobbies.map(hob => ({ value: hob })) : [],
+        skills: extractedData.skills ? extractedData.skills.map(skill => ({ value: typeof skill === 'string' ? skill : skill.value })) : [],
+        // @ts-ignore
+        projects: (extractedData.projects || []).map(proj => ({...proj})),
+        // @ts-ignore
+        certifications: (extractedData.certifications || []).map(cert => ({...cert})),
+        // @ts-ignore
+        achievements: extractedData.achievements ? extractedData.achievements.map(ach => ({ value: typeof ach === 'string' ? ach : ach.value })) : [],
+        // @ts-ignore
+        hobbies: extractedData.hobbies ? extractedData.hobbies.map(hob => ({ value: typeof hob === 'string' ? hob : hob.value })) : [],
       };
       
       form.reset(processedData);
@@ -80,9 +82,6 @@ export default function ResumeBuilderPage() {
   
   const handleFormSave = (values: ExtractResumeDataOutput) => {
     console.log("Resume data saved/updated:", values);
-    // This function is called by ResumeForm's onSubmit
-    // The form.watch() already updates `watchedData` for the preview in real-time.
-    // So, a toast message is sufficient here.
     toast({
         title: "Resume Updated",
         description: "Your resume data has been updated in the form and preview.",
@@ -149,7 +148,7 @@ export default function ResumeBuilderPage() {
           </section>
         </div>
       </main>
-       <footer className="py-6 mt-12 text-center text-muted-foreground border-t">
+       <footer id="page-footer" className="py-6 mt-12 text-center text-muted-foreground border-t">
         <p>&copy; {new Date().getFullYear()} ResumeAI. Built with passion.</p>
       </footer>
     </div>
