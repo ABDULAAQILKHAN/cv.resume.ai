@@ -111,17 +111,24 @@
   }
 }
 
+/* General print styles for cleaning up the page */
 @media print {
   body {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+    background-color: white !important; /* Ensure background is white for printing */
+    color: black !important; /* Ensure text is black for printing */
   }
-  #input-section, #download-button-container, #page-header .flex-shrink-0, #page-footer {
+
+  /* Hide elements not part of the resume content itself */
+  #page-header, 
+  #page-footer,
+  #input-section,
+  #download-button-container /* if it's separate from header and still exists */ {
     display: none !important;
   }
-  #page-header { /* Hide the whole header for print to avoid empty space if only button is hidden */
-    display: none !important;
-  }
+  
+  /* Ensure the preview section takes full width and has no extra styling */
   #preview-section {
     width: 100% !important;
     max-width: 100% !important;
@@ -129,16 +136,22 @@
     padding: 0 !important;
     box-shadow: none !important;
     border: none !important;
+    position: static !important; /* Override sticky positioning */
+    max-height: none !important;
+    overflow: visible !important;
   }
-   main {
-    padding: 0 !important;
+  
+  main {
+    padding: 0 !important; /* Remove padding from main container for print */
   }
+
   .resume-preview-card {
     box-shadow: none !important;
     border: none !important;
     margin: 0 !important;
     padding: 1rem !important; /* Add some padding to the card content itself for print */
     font-size: 10pt !important; /* Adjust base font size for print */
+    background-color: white !important; /* Ensure card background is white */
   }
   .resume-preview-card h1 {
     font-size: 18pt !important;
@@ -156,14 +169,22 @@
     font-size: 10pt !important;
     line-height: 1.3 !important;
   }
-  .resume-preview-card .text-xs {
+  .resume-preview-card .text-xs { /* Target Tailwind's text-xs if used for dates etc. */
     font-size: 8pt !important;
   }
    .resume-preview-card .text-2xs {
     font-size: 7pt !important;
   }
-  .make-static-for-print { /* Custom class to avoid parser issue with print:static */
+
+  /* Helper to make elements static if they have fixed/sticky positioning */
+  .make-static-for-print { 
     position: static !important;
   }
-  /* Removed manual print utility classes as Tailwind handles them */
+
+  /* Prevent elements from breaking across pages where possible */
+  .resume-preview-card section,
+  .resume-preview-card div.mb-3, /* Experience, project, education items */
+  .resume-preview-card ul > li {
+    break-inside: avoid;
+  }
 }
