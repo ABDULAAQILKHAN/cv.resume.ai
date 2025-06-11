@@ -387,7 +387,7 @@ export default function ResumeBuilderPage() {
         </div>
       </main>
        <footer id="page-footer" className="py-6 mt-12 text-center text-muted-foreground border-t print:hidden">
-        <p>&copy; {new Date().getFullYear()} ResumeAI. Built with passion.</p>
+        <p>&copy; {new Date().getFullYear()} ResumeAI. Built with/For passion.</p>
       </footer>
     </div>
   );
