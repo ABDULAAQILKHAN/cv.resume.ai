@@ -12,6 +12,11 @@ export const ExtractResumeDataInputSchema = z.object({
 export type ExtractResumeDataInput = z.infer<typeof ExtractResumeDataInputSchema>;
 
 // Define sub-schemas for complex array types
+const StringListItemSchema = z.object({ value: z.string() });
+export type Skill = z.infer<typeof StringListItemSchema>;
+export type Achievement = z.infer<typeof StringListItemSchema>;
+export type Hobby = z.infer<typeof StringListItemSchema>;
+
 const CertificationSchema = z.object({
   title: z.string().describe('The title of the certification.'),
   link: z.string().optional().describe('A URL link related to the certification (e.g., credential).'),
@@ -30,24 +35,9 @@ const ProjectSchema = z.object({
 });
 export type Project = z.infer<typeof ProjectSchema>;
 
-const StringListItemSchema = z.object({ value: z.string() });
-
-const StringArrayToObjectsTransform = z.union([
-    z.array(z.string()),
-    z.array(StringListItemSchema)
-  ])
-  .optional()
-  .default([])
-  .transform((val) => {
-    if (val.every(item => typeof item === 'string')) {
-      return (val as string[]).map(s => ({ value: s }));
-    }
-    return val as { value: string }[];
-  });
-
-
-// Define Output Schema
-export const ExtractResumeDataOutputSchema = z.object({
+// Schema for what the LLM is expected to output directly
+// For skills, achievements, hobbies, it outputs simple string arrays.
+export const LLMResumeDataOutputSchema = z.object({
   personalDetails: z.object({
     name: z.string().describe('The name of the person.'),
     email: z.string().describe('The email address of the person.'),
@@ -69,16 +59,59 @@ export const ExtractResumeDataOutputSchema = z.object({
     endDate: z.string().describe('The end date of the education.'),
     description: z.string().optional().describe('Additional details about the education.'),
   })).optional().default([]).describe('Education history extracted from the resume.'),
-  skills: StringArrayToObjectsTransform.pipe(z.array(StringListItemSchema.extend({value: StringListItemSchema.shape.value.describe("A specific skill.")})).optional().default([])).describe('A list of skills extracted from the resume. Each skill can be a string or an object with a "value" property.'),
+  skills: z.array(z.string()).optional().default([]).describe('A list of skills as simple strings.'),
   projects: z.array(ProjectSchema).optional().default([]).describe('A list of personal or professional projects.'),
   certifications: z.array(CertificationSchema).optional().default([]).describe('A list of certifications and licenses.'),
-  achievements: StringArrayToObjectsTransform.pipe(z.array(StringListItemSchema.extend({value: StringListItemSchema.shape.value.describe("A specific achievement.")})).optional().default([])).describe('A list of key achievements or accomplishments. Each can be a string or an object with "value".'),
-  hobbies: StringArrayToObjectsTransform.pipe(z.array(StringListItemSchema.extend({value: StringListItemSchema.shape.value.describe("A specific hobby.")})).optional().default([])).describe('A list of hobbies or interests. Each can be a string or an object with "value".'),
+  achievements: z.array(z.string()).optional().default([]).describe('A list of key achievements as simple strings.'),
+  hobbies: z.array(z.string()).optional().default([]).describe('A list of hobbies or interests as simple strings.'),
+});
+export type LLMResumeDataOutput = z.infer<typeof LLMResumeDataOutputSchema>;
+
+
+// Transform for converting string[] to {value: string}[]
+// Handles cases where input might already be {value: string}[] (e.g. from defaults or previous transforms)
+const StringArrayToObjectsTransform = z.union([
+    z.array(z.string()),
+    z.array(StringListItemSchema) // Allows already transformed data to pass through
+  ])
+  .optional()
+  .default([])
+  .transform((val) => {
+    if (val.length === 0) return [];
+    // Check if the first element is a string to determine if transformation is needed
+    if (typeof val[0] === 'string') {
+      return (val as string[]).map(s => ({ value: s }));
+    }
+    // If not string[], assume it's already {value: string}[] or compatible
+    return val as { value: string }[];
+  });
+
+// Final Output Schema for the application (used by the flow's output and for form validation)
+// This schema transforms skills, achievements, hobbies from string[] (if LLM provided that) to {value: string}[].
+export const ExtractResumeDataOutputSchema = z.object({
+  personalDetails: LLMResumeDataOutputSchema.shape.personalDetails,
+  summary: LLMResumeDataOutputSchema.shape.summary,
+  experience: LLMResumeDataOutputSchema.shape.experience,
+  education: LLMResumeDataOutputSchema.shape.education,
+  // Apply transformation to skills
+  skills: StringArrayToObjectsTransform
+    .pipe(z.array(StringListItemSchema.extend({value: StringListItemSchema.shape.value.describe("A specific skill.")})).optional().default([]))
+    .describe('A list of skills. Transformed to {value: string}[] format for the application.'),
+  projects: LLMResumeDataOutputSchema.shape.projects,
+  certifications: LLMResumeDataOutputSchema.shape.certifications,
+  // Apply transformation to achievements
+  achievements: StringArrayToObjectsTransform
+    .pipe(z.array(StringListItemSchema.extend({value: StringListItemSchema.shape.value.describe("A specific achievement.")})).optional().default([]))
+    .describe('A list of key achievements. Transformed to {value: string}[] format for the application.'),
+  // Apply transformation to hobbies
+  hobbies: StringArrayToObjectsTransform
+    .pipe(z.array(StringListItemSchema.extend({value: StringListItemSchema.shape.value.describe("A specific hobby.")})).optional().default([]))
+    .describe('A list of hobbies or interests. Transformed to {value: string}[] format for the application.'),
 });
 export type ExtractResumeDataOutput = z.infer<typeof ExtractResumeDataOutputSchema>;
 
 
-// Define a default empty state matching the schema structure
+// Define a default empty state matching the FINAL (transformed) schema structure
 export const defaultResumeData: ExtractResumeDataOutput = {
   personalDetails: {
     name: '',
@@ -89,11 +122,11 @@ export const defaultResumeData: ExtractResumeDataOutput = {
   summary: '',
   experience: [],
   education: [],
-  skills: [],
+  skills: [], // Will be {value: string}[]
   projects: [],
   certifications: [],
-  achievements: [],
-  hobbies: [],
+  achievements: [], // Will be {value: string}[]
+  hobbies: [], // Will be {value: string}[]
 };
 
 // Define type for individual experience item for easier usage in forms
@@ -101,6 +134,3 @@ export type Experience = z.infer<typeof ExtractResumeDataOutputSchema.shape.expe
 // Define type for individual education item
 export type Education = z.infer<typeof ExtractResumeDataOutputSchema.shape.education.element>;
 // Projects and Certifications types are already exported above
-export type Skill = z.infer<typeof StringListItemSchema>;
-export type Achievement = z.infer<typeof StringListItemSchema>;
-export type Hobby = z.infer<typeof StringListItemSchema>;
