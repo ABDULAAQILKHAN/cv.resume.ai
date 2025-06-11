@@ -30,6 +30,21 @@ const ProjectSchema = z.object({
 });
 export type Project = z.infer<typeof ProjectSchema>;
 
+const StringListItemSchema = z.object({ value: z.string() });
+
+const StringArrayToObjectsTransform = z.union([
+    z.array(z.string()),
+    z.array(StringListItemSchema)
+  ])
+  .optional()
+  .default([])
+  .transform((val) => {
+    if (val.every(item => typeof item === 'string')) {
+      return (val as string[]).map(s => ({ value: s }));
+    }
+    return val as { value: string }[];
+  });
+
 
 // Define Output Schema
 export const ExtractResumeDataOutputSchema = z.object({
@@ -46,19 +61,19 @@ export const ExtractResumeDataOutputSchema = z.object({
     startDate: z.string().describe('The start date of the job.'),
     endDate: z.string().optional().describe('The end date of the job, or null if still employed.'),
     description: z.string().describe('The job description.'),
-  })).optional().describe('Work experience extracted from the resume.'),
+  })).optional().default([]).describe('Work experience extracted from the resume.'),
   education: z.array(z.object({
     institution: z.string().describe('The name of the educational institution.'),
     degree: z.string().describe('The degree obtained.'),
     startDate: z.string().describe('The start date of the education.'),
     endDate: z.string().describe('The end date of the education.'),
     description: z.string().optional().describe('Additional details about the education.'),
-  })).optional().describe('Education history extracted from the resume.'),
-  skills: z.array(z.string()).optional().describe('A list of skills extracted from the resume.'),
-  projects: z.array(ProjectSchema).optional().describe('A list of personal or professional projects.'),
-  certifications: z.array(CertificationSchema).optional().describe('A list of certifications and licenses.'),
-  achievements: z.array(z.string()).optional().describe('A list of key achievements or accomplishments.'),
-  hobbies: z.array(z.string()).optional().describe('A list of hobbies or interests (if mentioned).'),
+  })).optional().default([]).describe('Education history extracted from the resume.'),
+  skills: StringArrayToObjectsTransform.pipe(z.array(StringListItemSchema.extend({value: StringListItemSchema.shape.value.describe("A specific skill.")})).optional().default([])).describe('A list of skills extracted from the resume. Each skill can be a string or an object with a "value" property.'),
+  projects: z.array(ProjectSchema).optional().default([]).describe('A list of personal or professional projects.'),
+  certifications: z.array(CertificationSchema).optional().default([]).describe('A list of certifications and licenses.'),
+  achievements: StringArrayToObjectsTransform.pipe(z.array(StringListItemSchema.extend({value: StringListItemSchema.shape.value.describe("A specific achievement.")})).optional().default([])).describe('A list of key achievements or accomplishments. Each can be a string or an object with "value".'),
+  hobbies: StringArrayToObjectsTransform.pipe(z.array(StringListItemSchema.extend({value: StringListItemSchema.shape.value.describe("A specific hobby.")})).optional().default([])).describe('A list of hobbies or interests. Each can be a string or an object with "value".'),
 });
 export type ExtractResumeDataOutput = z.infer<typeof ExtractResumeDataOutputSchema>;
 
@@ -86,3 +101,6 @@ export type Experience = z.infer<typeof ExtractResumeDataOutputSchema.shape.expe
 // Define type for individual education item
 export type Education = z.infer<typeof ExtractResumeDataOutputSchema.shape.education.element>;
 // Projects and Certifications types are already exported above
+export type Skill = z.infer<typeof StringListItemSchema>;
+export type Achievement = z.infer<typeof StringListItemSchema>;
+export type Hobby = z.infer<typeof StringListItemSchema>;

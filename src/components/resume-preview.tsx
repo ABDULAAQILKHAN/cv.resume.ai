@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { ExtractResumeDataOutput, Project, Certification } from '@/types/resume';
+import type { ExtractResumeDataOutput, Project, Certification, Skill, Achievement, Hobby } from '@/types/resume';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 // import { Separator } from '@/components/ui/separator'; // Not used for ATS style
 import { User, Briefcase, GraduationCap, Wand2, Mail, Phone, LinkedinIcon, CalendarDays, Link as LinkIcon, AlignLeft, Award, Smile, BadgeCheck, Lightbulb } from 'lucide-react';
@@ -71,7 +71,7 @@ export function ResumePreview({ data }: ResumePreviewProps) {
       <CardContent className="p-6 print:p-4 space-y-3 print:space-y-2">
         {/* Personal Details */}
         {personalDetails && (personalDetails.name || personalDetails.email || personalDetails.phone || personalDetails.linkedin) && (
-          <section className="text-center mb-4 print:mb-2">
+          <section className="text-center mb-4 print:mb-2 break-inside-avoid">
             {personalDetails.name && (
               <h1 className="text-3xl font-bold text-primary print:text-2xl">{personalDetails.name.toUpperCase()}</h1>
             )}
@@ -97,7 +97,7 @@ export function ResumePreview({ data }: ResumePreviewProps) {
 
         {/* Summary */}
         {summary && (
-          <section>
+          <section className="break-inside-avoid">
             <SectionTitle icon={AlignLeft} title="Summary" />
             <p className="text-sm whitespace-pre-line print:text-xs">{summary}</p>
           </section>
@@ -105,10 +105,10 @@ export function ResumePreview({ data }: ResumePreviewProps) {
 
         {/* Work Experience */}
         {experience && experience.length > 0 && (
-          <section>
+          <section className="break-inside-avoid">
             <SectionTitle icon={Briefcase} title="Work Experience" />
             {experience.map((exp, index) => (
-              <div key={index} className="mb-3 print:mb-2">
+              <div key={index} className="mb-3 print:mb-2 break-inside-avoid">
                 <h3 className="text-lg font-medium print:text-base">{exp.title}</h3>
                 <div className="flex justify-between items-baseline">
                   <p className="text-md font-semibold text-accent print:text-sm">{exp.company}</p>
@@ -124,10 +124,10 @@ export function ResumePreview({ data }: ResumePreviewProps) {
         
         {/* Projects */}
         {projects && projects.length > 0 && (
-          <section>
+          <section className="break-inside-avoid">
             <SectionTitle icon={Lightbulb} title="Projects" />
-            {projects.map((proj, index) => (
-              <div key={index} className="mb-3 print:mb-2">
+            {projects.map((proj: Project, index: number) => (
+              <div key={index} className="mb-3 print:mb-2 break-inside-avoid">
                 <div className="flex justify-between items-baseline">
                   <h3 className="text-lg font-medium print:text-base">
                     {proj.title}
@@ -151,10 +151,10 @@ export function ResumePreview({ data }: ResumePreviewProps) {
 
         {/* Education */}
         {education && education.length > 0 && (
-          <section>
+          <section className="break-inside-avoid">
             <SectionTitle icon={GraduationCap} title="Education" />
             {education.map((edu, index) => (
-              <div key={index} className="mb-3 print:mb-2">
+              <div key={index} className="mb-3 print:mb-2 break-inside-avoid">
                 <h3 className="text-lg font-medium print:text-base">{edu.degree}</h3>
                  <div className="flex justify-between items-baseline">
                     <p className="text-md font-semibold text-accent print:text-sm">{edu.institution}</p>
@@ -170,13 +170,12 @@ export function ResumePreview({ data }: ResumePreviewProps) {
 
         {/* Skills */}
         {skills && skills.length > 0 && (
-          <section>
+          <section className="break-inside-avoid">
             <SectionTitle icon={Wand2} title="Skills" />
             <ul className="flex flex-wrap gap-x-3 gap-y-1">
-              {skills.map((skill, index) => (
+              {skills.map((skill: Skill, index: number) => (
                 <ListItem key={index}>
-                  {/* @ts-ignore skills from AI are direct strings, from form they are objects with value */}
-                  {typeof skill === 'string' ? skill : skill.value}
+                  {skill.value}
                 </ListItem>
               ))}
             </ul>
@@ -185,10 +184,10 @@ export function ResumePreview({ data }: ResumePreviewProps) {
 
         {/* Certifications */}
         {certifications && certifications.length > 0 && (
-          <section>
+          <section className="break-inside-avoid">
             <SectionTitle icon={BadgeCheck} title="Certifications" />
-            {certifications.map((cert, index) => (
-              <div key={index} className="mb-3 print:mb-2">
+            {certifications.map((cert: Certification, index: number) => (
+              <div key={index} className="mb-3 print:mb-2 break-inside-avoid">
                 <div className="flex justify-between items-baseline">
                     <h3 className="text-lg font-medium print:text-base">
                         {cert.title}
@@ -212,13 +211,12 @@ export function ResumePreview({ data }: ResumePreviewProps) {
 
         {/* Achievements */}
         {achievements && achievements.length > 0 && (
-          <section>
+          <section className="break-inside-avoid">
             <SectionTitle icon={Award} title="Achievements" />
             <ul className="list-disc list-inside pl-1">
-              {achievements.map((ach, index) => (
+              {achievements.map((ach: Achievement, index: number) => (
                 <ListItem key={index}>
-                  {/* @ts-ignore */}
-                  {typeof ach === 'string' ? ach : ach.value}
+                  {ach.value}
                 </ListItem>
               ))}
             </ul>
@@ -227,13 +225,12 @@ export function ResumePreview({ data }: ResumePreviewProps) {
 
         {/* Hobbies */}
         {hobbies && hobbies.length > 0 && (
-          <section>
+          <section className="break-inside-avoid">
             <SectionTitle icon={Smile} title="Hobbies" />
             <ul className="flex flex-wrap gap-x-3 gap-y-1">
-              {hobbies.map((hobby, index) => (
+              {hobbies.map((hobby: Hobby, index: number) => (
                  <ListItem key={index}>
-                  {/* @ts-ignore */}
-                  {typeof hobby === 'string' ? hobby : hobby.value}
+                  {hobby.value}
                 </ListItem>
               ))}
             </ul>
