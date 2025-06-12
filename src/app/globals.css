@@ -111,16 +111,29 @@
   }
 }
 
+/* Styles for the A4 sheet preview on /resume-print page (screen only) */
+.a4-sheet {
+  width: 210mm; /* A4 width */
+  min-height: 297mm; /* A4 height, use min-height for content overflow */
+  padding: 15mm; /* Typical A4 margin */
+  margin: 1rem auto; /* Center sheet on page */
+  box-sizing: border-box;
+}
+
+
 /* General print styles for cleaning up the page */
 @media print {
   body {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
     background-color: white !important; /* Ensure background is white for printing */
     color: black !important; /* Ensure text is black for printing */
+    margin: 0;
+    padding: 0;
+    width: 100%;
   }
 
-  /* Hide elements not part of the resume content itself */
+  /* Hide elements not part of the resume content itself on the main page */
   #page-header, 
   #page-footer,
   #input-section,
@@ -128,8 +141,9 @@
     display: none !important;
   }
   
-  /* Ensure the preview section takes full width and has no extra styling */
-  #preview-section {
+  /* Ensure the preview section on main page takes full width if printed from there */
+  /* These rules are less critical now with a dedicated print page but kept for robustness */
+  #preview-section.make-static-for-print {
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
@@ -137,54 +151,126 @@
     box-shadow: none !important;
     border: none !important;
     position: static !important; /* Override sticky positioning */
-    max-height: none !important;
-    overflow: visible !important;
-  }
-  
-  main {
-    padding: 0 !important; /* Remove padding from main container for print */
+    max-height: none !important; /* Remove height restrictions */
+    overflow: visible !important; /* Show all content */
+    background-color: white !important; /* Ensure background is white for printing */
   }
 
-  .resume-preview-card {
+  /* Specific styles for the dedicated /resume-print page */
+  .print-page-container {
+    padding: 0 !important;
+    margin: 0 !important;
+    background-color: white !important;
+  }
+  .print-controls {
+    display: none !important; /* Hide the print button and messages on the print page */
+  }
+  .resume-preview-wrapper {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .a4-sheet { /* Reset A4 screen styles for actual print */
+    width: 100% !important;
+    min-height: auto !important; /* Let content flow */
+    height: auto !important;
+    padding: 10mm !important; /* Standard print margin, adjust as needed */
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background-color: white !important;
+  }
+  
+  main { /* Remove padding from main container for print if printing from main page */
+    padding: 0 !important;
+  }
+
+  /* Styles for the ResumePreview component itself when printed */
+  .resume-preview-card { /* This is the Card component used in ResumePreview */
     box-shadow: none !important;
     border: none !important;
     margin: 0 !important;
-    padding: 1rem !important; /* Add some padding to the card content itself for print */
+    padding: 0 !important; /* Padding is handled by .a4-sheet or body margins */
     font-size: 10pt !important; /* Adjust base font size for print */
+    line-height: 1.3 !important;
     background-color: white !important; /* Ensure card background is white */
+    color: black !important; /* Ensure text is black */
   }
-  .resume-preview-card h1 {
-    font-size: 18pt !important;
+  .resume-preview-card h1 { /* Name */
+    font-size: 20pt !important;
+    color: black !important;
   }
-  .resume-preview-card h2 {
-    font-size: 14pt !important;
-    margin-top: 0.5rem !important;
-    margin-bottom: 0.25rem !important;
-    padding-bottom: 0.1rem !important;
+  .resume-preview-card h2 { /* Section Titles */
+    font-size: 13pt !important;
+    color: black !important;
+    /* border-bottom: 1px solid #ccc !important; */ /* uncomment for subtle separator */
   }
-  .resume-preview-card h3 {
-    font-size: 12pt !important;
+  .resume-preview-card h3 { /* Job Title, Degree */
+    font-size: 11pt !important;
+    color: black !important;
   }
-  .resume-preview-card p, .resume-preview-card li {
+  .resume-preview-card p, 
+  .resume-preview-card li,
+  .resume-preview-card div { /* General text, list items */
     font-size: 10pt !important;
     line-height: 1.3 !important;
+    color: black !important;
   }
-  .resume-preview-card .text-xs { /* Target Tailwind's text-xs if used for dates etc. */
-    font-size: 8pt !important;
-  }
-   .resume-preview-card .text-2xs {
-    font-size: 7pt !important;
+  .resume-preview-card .text-xs,
+  .resume-preview-card .text-sm,
+  .resume-preview-card .text-md,
+  .resume-preview-card .text-lg { /* Override Tailwind specific sizes if used */
+     font-size: 10pt !important;
   }
 
-  /* Helper to make elements static if they have fixed/sticky positioning */
-  .make-static-for-print { 
-    position: static !important;
+  .resume-preview-card .text-muted-foreground {
+    color: #333 !important; /* Darker gray for muted text in print */
   }
+  .resume-preview-card .text-primary {
+    color: black !important;
+  }
+  .resume-preview-card .text-accent {
+    color: #1a5276 !important; /* A darker blue for accent, or just black */
+  }
+
+  .resume-preview-card a {
+    color: #0000EE !important; /* Standard link blue, or just black */
+    text-decoration: none !important; /* No underlines for cleaner print, or use underline */
+  }
+  .resume-preview-card a:after { /* Optionally show URL for links in print */
+    /* content: " (" attr(href) ")"; */
+    /* font-size: 8pt; */
+    /* color: #555; */
+  }
+
 
   /* Prevent elements from breaking across pages where possible */
   .resume-preview-card section,
   .resume-preview-card div.mb-3, /* Experience, project, education items */
   .resume-preview-card ul > li {
-    break-inside: avoid;
+    break-inside: avoid-page; /* More standard property */
   }
+  .resume-preview-card h1,
+  .resume-preview-card h2,
+  .resume-preview-card h3 {
+    break-after: avoid-page; /* Avoid breaking page right after a heading */
+  }
+
+  /* Ensure specific Lucide icons are not overly large or colored */
+  .resume-preview-card svg {
+    color: black !important; /* Ensure icons are black */
+    width: 0.8em !important; /* Adjust icon size to be subtle */
+    height: 0.8em !important;
+    vertical-align: middle !important;
+  }
+
+  /* Tailwind class specific overrides */
+  [class~="print:shadow-none"] { box-shadow: none !important; }
+  [class~="print:border-none"] { border: none !important; }
+  [class~="print:bg-transparent"] { background-color: transparent !important; }
+  [class~="print:m-0"] { margin: 0 !important; }
+  [class~="print:p-0"] { padding: 0 !important; }
+  [class~="print:max-h-full"] { max-height:none !important; }
+  [class~="print:overflow-visible"] { overflow: visible !important; }
+
+
 }

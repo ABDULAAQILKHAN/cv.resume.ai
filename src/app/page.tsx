@@ -5,16 +5,17 @@ import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { extractResumeData } from '@/ai/flows/extract-resume-data';
-import type { ExtractResumeDataOutput, Experience, Education, Project, Certification } from '@/types/resume';
-import { ExtractResumeDataOutputSchema, defaultResumeData } from '@/types/resume';
+import type { ExtractResumeDataOutput, Experience, Education, Project, Certification, Language, VolunteerEntry, Publication } from '@/types/resume';
+import { ExtractResumeDataOutputSchema, defaultResumeData, LLMResumeDataOutputSchema } from '@/types/resume'; // Import LLM Schema for parsing AI output
 import { ResumeForm } from '@/components/resume-form';
 import { FileUpload } from '@/components/file-upload';
 import { ResumePreview } from '@/components/resume-preview';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Download, FileText, Loader2 } from 'lucide-react';
-import jsPDF from 'jspdf';
+import { Download, FileText, Loader2, Printer } from 'lucide-react';
+// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; Removed jsPDF template selection
+
 
 const fileToDataUri = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -27,12 +28,13 @@ const fileToDataUri = (file: File): Promise<string> => {
 
 export default function ResumeBuilderPage() {
   const [isLoadingAI, setIsLoadingAI] = React.useState(false);
-  const [isGeneratingPdf, setIsGeneratingPdf] = React.useState(false);
+  const [isPreparingPrint, setIsPreparingPrint] = React.useState(false);
   const { toast } = useToast();
 
   const form = useForm<ExtractResumeDataOutput>({
     resolver: zodResolver(ExtractResumeDataOutputSchema),
     defaultValues: defaultResumeData,
+    mode: 'onBlur', // Validate on blur for better UX
   });
 
   const watchedData = form.watch();
@@ -41,10 +43,17 @@ export default function ResumeBuilderPage() {
     setIsLoadingAI(true);
     try {
       const resumeDataUri = await fileToDataUri(file);
-      const extractedData = await extractResumeData({ resumeDataUri });
+      // AI returns data potentially matching LLMResumeDataOutputSchema (e.g. skills as string[])
+      const extractedRawData = await extractResumeData({ resumeDataUri });
       
-      const parsedData = ExtractResumeDataOutputSchema.parse(extractedData || {});
-      form.reset(parsedData);
+      // First, parse the raw AI output using the LLM-specific schema
+      const parsedLLMData = LLMResumeDataOutputSchema.parse(extractedRawData || {});
+
+      // Then, parse this LLM-parsed data using the final application schema, which includes transformations
+      // (e.g., string[] to {value:string}[]) and stricter validation where needed (e.g. for URLs after transform)
+      const finalParsedData = ExtractResumeDataOutputSchema.parse(parsedLLMData);
+      
+      form.reset(finalParsedData);
 
       toast({
         title: "Success!",
@@ -53,20 +62,24 @@ export default function ResumeBuilderPage() {
       });
     } catch (error) {
       console.error("Error extracting resume data:", error);
+      let errorMessage = "Failed to extract data from resume. Please try again or fill manually.";
+      if (error instanceof Error) {
+        errorMessage += ` Details: ${error.message}`;
+      }
       toast({
         title: "Error",
-        description: "Failed to extract data from resume. Please try again or fill manually.",
+        description: errorMessage,
         variant: "destructive",
+        duration: 7000,
       });
+      // Optionally reset to default if parsing fails significantly
+      // form.reset(defaultResumeData);
     } finally {
       setIsLoadingAI(false);
     }
   };
   
   const handleFormSave = (values: ExtractResumeDataOutput) => {
-    // This function is called when the form (if it had a submit button) is submitted.
-    // Currently, data updates happen on field change and are reflected in `watchedData`.
-    // We can use this to manually trigger a save or update if needed.
     console.log("Resume data saved/updated (manual trigger):", values);
     toast({
         title: "Resume Updated",
@@ -74,255 +87,54 @@ export default function ResumeBuilderPage() {
     });
   };
 
-  const handleDownloadWithJsPDF = async (data: ExtractResumeDataOutput) => {
-    setIsGeneratingPdf(true);
+  const handlePrepareAndPrint = () => {
+    setIsPreparingPrint(true);
     try {
-      const pdfData = ExtractResumeDataOutputSchema.parse(data);
-      const doc = new jsPDF('p', 'pt', 'a4');
-      const margin = 40;
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const usableWidth = pageWidth - 2 * margin;
-      let currentY = margin;
-      const lineHeight = 1.2;
-      const sectionGap = 20;
-      const itemGap = 10;
+      // Validate the current form data before saving to localStorage
+      const currentData = form.getValues();
+      const validationResult = ExtractResumeDataOutputSchema.safeParse(currentData);
 
-      const addPageIfNeeded = (heightEstimate: number) => {
-        if (currentY + heightEstimate > doc.internal.pageSize.getHeight() - margin) {
-          doc.addPage();
-          currentY = margin;
-        }
-      };
-
-      const addWrappedText = (text: string | undefined | null, x: number, y: number, maxWidth: number, options?: any) => {
-        if (!text) return y;
-        doc.setFontSize(options?.fontSize || 10);
-        doc.setFont(options?.fontStyle || 'normal');
-        const lines = doc.splitTextToSize(text, maxWidth);
-        doc.text(lines, x, y);
-        return y + (lines.length * (options?.fontSize || 10) * lineHeight);
-      };
-      
-      const addLink = (text: string, url: string, x: number, y: number, options?: any) => {
-         doc.setFontSize(options?.fontSize || 10);
-         doc.setTextColor(0, 0, 255); // Blue for links
-         doc.textWithLink(text, x, y, { url });
-         doc.setTextColor(0, 0, 0); // Reset color
-         return y + (options?.fontSize || 10) * lineHeight;
-      };
-
-
-      // --- Personal Details ---
-      if (pdfData.personalDetails) {
-        const { name, email, phone, linkedin } = pdfData.personalDetails;
-        if (name) {
-          doc.setFontSize(24);
-          doc.setFont('helvetica', 'bold');
-          const nameWidth = doc.getTextWidth(name);
-          addPageIfNeeded(30);
-          doc.text(name, (pageWidth - nameWidth) / 2, currentY);
-          currentY += 30;
-        }
-        
-        const contactInfo = [];
-        if (email) contactInfo.push(`Email: ${email}`);
-        if (phone) contactInfo.push(`Phone: ${phone}`);
-        
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        contactInfo.forEach(info => {
-          const infoWidth = doc.getTextWidth(info);
-          addPageIfNeeded(12);
-          doc.text(info, (pageWidth - infoWidth) / 2, currentY);
-          currentY += 12;
+      if (!validationResult.success) {
+        console.error("Form validation failed for printing:", validationResult.error.flatten());
+        // Trigger form validation display
+        form.trigger(); 
+        toast({
+          title: "Validation Error",
+          description: "Please correct the errors in the form before printing.",
+          variant: "destructive",
         });
-         if (linkedin) {
-            const linkedInText = `LinkedIn: ${linkedin}`;
-            const linkedInWidth = doc.getTextWidth(linkedInText);
-            addPageIfNeeded(12);
-            // jsPDF textWithLink needs careful handling for centering, let's keep it simple
-            addLink(linkedInText, linkedin.startsWith('http') ? linkedin : `https://${linkedin}`, (pageWidth - linkedInWidth) / 2, currentY, { fontSize: 10});
-            currentY += 12;
-        }
-        currentY += sectionGap / 2;
-      }
-
-      // --- Section Title Helper ---
-      const addSectionTitle = (title: string) => {
-        addPageIfNeeded(20 + sectionGap / 2);
-        currentY += sectionGap / 2;
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text(title.toUpperCase(), margin, currentY);
-        currentY += 20;
-        // doc.setLineWidth(1);
-        // doc.line(margin, currentY - 5, pageWidth - margin, currentY - 5); // Underline
-        // currentY += 5;
-      };
-      
-      // --- Summary ---
-      if (pdfData.summary) {
-        addSectionTitle('Summary');
-        currentY = addWrappedText(pdfData.summary, margin, currentY, usableWidth, { fontSize: 10 });
-        currentY += sectionGap;
-      }
-
-      // --- Experience ---
-      if (pdfData.experience && pdfData.experience.length > 0) {
-        addSectionTitle('Work Experience');
-        pdfData.experience.forEach((exp: Experience) => {
-          addPageIfNeeded(15 + 12 + 12 + 30); // Estimate height
-          doc.setFontSize(12);
-          doc.setFont('helvetica', 'bold');
-          doc.text(exp.title || '', margin, currentY);
-          currentY += 15;
-
-          doc.setFontSize(10);
-          doc.setFont('helvetica', 'italic');
-          doc.text(`${exp.company || ''} | ${exp.startDate || ''} - ${exp.endDate || 'Present'}`, margin, currentY);
-          currentY += 12;
-          
-          doc.setFont('helvetica', 'normal');
-          currentY = addWrappedText(exp.description, margin + 15, currentY, usableWidth - 15, { fontSize: 10 });
-          currentY += itemGap;
-        });
-        currentY += sectionGap;
+        setIsPreparingPrint(false);
+        return;
       }
       
-      // --- Projects ---
-      if (pdfData.projects && pdfData.projects.length > 0) {
-        addSectionTitle('Projects');
-        pdfData.projects.forEach((proj: Project) => {
-          addPageIfNeeded(15 + 12 + 12 + 30);
-          doc.setFontSize(12);
-          doc.setFont('helvetica', 'bold');
-          doc.text(proj.title || '', margin, currentY);
-          if (proj.link) {
-            const titleWidth = doc.getTextWidth(proj.title || '');
-            addLink('[Link]', proj.link.startsWith('http') ? proj.link : `https://${proj.link}`, margin + titleWidth + 5, currentY -2, {fontSize: 10});
-          }
-          currentY += 15;
-
-          doc.setFontSize(10);
-          doc.setFont('helvetica', 'italic');
-          const dates = [proj.startDate, proj.endDate].filter(Boolean).join(' - ');
-          if (dates) {
-            doc.text(dates, margin, currentY);
-            currentY += 12;
-          }
-          
-          doc.setFont('helvetica', 'normal');
-          currentY = addWrappedText(proj.description, margin + 15, currentY, usableWidth - 15, { fontSize: 10 });
-          currentY += itemGap;
-        });
-        currentY += sectionGap;
-      }
-
-      // --- Education ---
-      if (pdfData.education && pdfData.education.length > 0) {
-        addSectionTitle('Education');
-        pdfData.education.forEach((edu: Education) => {
-          addPageIfNeeded(15 + 12 + 12 + 20);
-          doc.setFontSize(12);
-          doc.setFont('helvetica', 'bold');
-          doc.text(edu.degree || '', margin, currentY);
-          currentY += 15;
-
-          doc.setFontSize(10);
-          doc.setFont('helvetica', 'italic');
-          doc.text(`${edu.institution || ''} | ${edu.startDate || ''} - ${edu.endDate || ''}`, margin, currentY);
-          currentY += 12;
-
-          doc.setFont('helvetica', 'normal');
-          currentY = addWrappedText(edu.description, margin + 15, currentY, usableWidth - 15, { fontSize: 10 });
-          currentY += itemGap;
-        });
-        currentY += sectionGap;
-      }
+      localStorage.setItem('resumePrintData', JSON.stringify(validationResult.data));
       
-      // --- Skills ---
-      if (pdfData.skills && pdfData.skills.length > 0) {
-        addSectionTitle('Skills');
-        addPageIfNeeded(15 * pdfData.skills.length);
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        const skillsText = pdfData.skills.map(s => s.value).join(', ');
-        currentY = addWrappedText(skillsText, margin, currentY, usableWidth, {fontSize: 10});
-        currentY += sectionGap;
-      }
-      
-      // --- Certifications ---
-      if (pdfData.certifications && pdfData.certifications.length > 0) {
-        addSectionTitle('Certifications');
-        pdfData.certifications.forEach((cert: Certification) => {
-          addPageIfNeeded(15 + 12 + 12 + 20);
-          doc.setFontSize(12);
-          doc.setFont('helvetica', 'bold');
-          doc.text(cert.title || '', margin, currentY);
-           if (cert.link) {
-            const titleWidth = doc.getTextWidth(cert.title || '');
-            addLink('[Link]', cert.link.startsWith('http') ? cert.link : `https://${cert.link}`, margin + titleWidth + 5, currentY - 2, {fontSize: 10});
-          }
-          currentY += 15;
-
-          doc.setFontSize(10);
-          doc.setFont('helvetica', 'italic');
-          const dates = [cert.startDate, cert.endDate].filter(Boolean).join(' - ');
-          if (dates) {
-            doc.text(dates, margin, currentY);
-            currentY += 12;
-          }
-          
-          doc.setFont('helvetica', 'normal');
-          currentY = addWrappedText(cert.description, margin + 15, currentY, usableWidth - 15, { fontSize: 10 });
-          currentY += itemGap;
+      const printWindow = window.open('/resume-print', '_blank');
+      if (printWindow) {
+        printWindow.focus();
+      } else {
+        toast({
+          title: "Popup Blocked?",
+          description: "Could not open print preview window. Please allow popups for this site.",
+          variant: "destructive",
         });
-        currentY += sectionGap;
       }
-
-      // --- Achievements ---
-      if (pdfData.achievements && pdfData.achievements.length > 0) {
-        addSectionTitle('Achievements');
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        pdfData.achievements.forEach(ach => {
-          addPageIfNeeded(15);
-          currentY = addWrappedText(`• ${ach.value || ''}`, margin, currentY, usableWidth, { fontSize: 10 });
-          currentY += 5; // Smaller gap for list items
-        });
-        currentY += sectionGap;
-      }
-
-      // --- Hobbies ---
-      if (pdfData.hobbies && pdfData.hobbies.length > 0) {
-        addSectionTitle('Hobbies');
-        addPageIfNeeded(15 * pdfData.hobbies.length);
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        const hobbiesText = pdfData.hobbies.map(h => h.value).join(', ');
-        currentY = addWrappedText(hobbiesText, margin, currentY, usableWidth, {fontSize: 10});
-        currentY += sectionGap;
-      }
-
-      const fileName = `${pdfData.personalDetails?.name?.replace(/\s+/g, '_') || 'Resume'}_ResumeAI.pdf`;
-      doc.save(fileName);
-
-      toast({
-        title: "PDF Generated",
-        description: `${fileName} has been downloaded.`,
-      });
-
     } catch (error) {
-      console.error("Error generating PDF with jsPDF:", error);
+      console.error("Error preparing data for print:", error);
       toast({
-        title: "PDF Generation Error",
-        description: "Failed to generate PDF. Please check console for details.",
+        title: "Error",
+        description: "Could not prepare data for printing.",
         variant: "destructive",
       });
     } finally {
-      setIsGeneratingPdf(false);
+      // Small delay to allow new tab to open
+      setTimeout(() => setIsPreparingPrint(false), 1000);
     }
   };
+
+  // For the live preview, use safeParse to avoid crashing the page on invalid intermediate data
+  const previewDataResult = ExtractResumeDataOutputSchema.safeParse(watchedData);
+  const dataForPreview = previewDataResult.success ? previewDataResult.data : watchedData;
 
 
   return (
@@ -333,15 +145,16 @@ export default function ResumeBuilderPage() {
             <FileText className="h-8 w-8 text-primary" />
             <h1 className="text-3xl font-bold text-primary">ResumeAI</h1>
           </div>
-          <div className="flex-shrink-0" id="download-button-container">
+          <div className="flex items-center gap-4">
+            {/* Template select removed for simplicity, focusing on print-to-pdf of ResumePreview */}
             <Button 
-              onClick={() => handleDownloadWithJsPDF(watchedData)} 
+              onClick={handlePrepareAndPrint} 
               variant="default" 
               size="lg"
-              disabled={isGeneratingPdf || isLoadingAI}
+              disabled={isPreparingPrint || isLoadingAI}
             >
-              {isGeneratingPdf ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Download className="mr-2 h-5 w-5" />}
-              {isGeneratingPdf ? 'Generating PDF...' : 'Download PDF'}
+              {isPreparingPrint ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Printer className="mr-2 h-5 w-5" />}
+              {isPreparingPrint ? 'Preparing...' : 'Save as PDF / Print'}
             </Button>
           </div>
         </div>
@@ -381,14 +194,15 @@ export default function ResumeBuilderPage() {
             </Card>
           </section>
 
-          <section id="preview-section" className="sticky top-28 max-h-[calc(100vh-8rem)] overflow-y-auto rounded-lg shadow-xl border bg-card make-static-for-print print:max-h-full print:overflow-visible">
-             <ResumePreview data={ExtractResumeDataOutputSchema.parse(watchedData)} />
+          <section id="preview-section" className="sticky top-28 max-h-[calc(100vh-8rem)] overflow-y-auto rounded-lg shadow-xl border bg-card make-static-for-print print:shadow-none print:border-none print:bg-transparent print:max-h-full print:overflow-visible">
+             <ResumePreview data={dataForPreview} />
           </section>
         </div>
       </main>
        <footer id="page-footer" className="py-6 mt-12 text-center text-muted-foreground border-t print:hidden">
-        <p>&copy; {new Date().getFullYear()} ResumeAI. Built with/For passion.</p>
+        <p>&copy; {new Date().getFullYear()} ResumeAI. Built with passion.</p>
       </footer>
     </div>
   );
 }
+
