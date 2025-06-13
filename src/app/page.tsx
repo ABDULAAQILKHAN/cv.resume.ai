@@ -5,17 +5,16 @@ import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { extractResumeData } from '@/ai/flows/extract-resume-data';
-import type { ExtractResumeDataOutput, Experience, Education, Project, Certification, Language, VolunteerEntry, Publication } from '@/types/resume';
-import { ExtractResumeDataOutputSchema, defaultResumeData, LLMResumeDataOutputSchema } from '@/types/resume'; // Import LLM Schema for parsing AI output
+import type { ExtractResumeDataOutput } from '@/types/resume';
+import { ExtractResumeDataOutputSchema, defaultResumeData } from '@/types/resume';
 import { ResumeForm } from '@/components/resume-form';
 import { FileUpload } from '@/components/file-upload';
 import { ResumePreview } from '@/components/resume-preview';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from '@/hooks/use-toast';
-import { Download, FileText, Loader2, Printer } from 'lucide-react';
-// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; Removed jsPDF template selection
-
+import { Loader2, Printer, FileText } from 'lucide-react';
 
 const fileToDataUri = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -34,7 +33,7 @@ export default function ResumeBuilderPage() {
   const form = useForm<ExtractResumeDataOutput>({
     resolver: zodResolver(ExtractResumeDataOutputSchema),
     defaultValues: defaultResumeData,
-    mode: 'onBlur', // Validate on blur for better UX
+    mode: 'onBlur',
   });
 
   const watchedData = form.watch();
@@ -43,23 +42,32 @@ export default function ResumeBuilderPage() {
     setIsLoadingAI(true);
     try {
       const resumeDataUri = await fileToDataUri(file);
-      // AI returns data potentially matching LLMResumeDataOutputSchema (e.g. skills as string[])
-      const extractedRawData = await extractResumeData({ resumeDataUri });
+      // The `extractResumeData` flow already returns data conforming to `ExtractResumeDataOutputSchema`
+      const extractedDataFromAI = await extractResumeData({ resumeDataUri });
       
-      // First, parse the raw AI output using the LLM-specific schema
-      const parsedLLMData = LLMResumeDataOutputSchema.parse(extractedRawData || {});
-
-      // Then, parse this LLM-parsed data using the final application schema, which includes transformations
-      // (e.g., string[] to {value:string}[]) and stricter validation where needed (e.g. for URLs after transform)
-      const finalParsedData = ExtractResumeDataOutputSchema.parse(parsedLLMData);
+      // Validate and parse the data received from the AI flow using the final application schema.
+      // This step ensures the data is in the correct shape for the form and applies any defaults.
+      const validationResult = ExtractResumeDataOutputSchema.safeParse(extractedDataFromAI || defaultResumeData);
       
-      form.reset(finalParsedData);
+      if (!validationResult.success) {
+        console.error("Validation failed for AI extracted data:", validationResult.error.flatten());
+        toast({
+          title: "Data Parsing Error",
+          description: "There was an issue processing some fields from the extracted resume data. Please review the form.",
+          variant: "destructive",
+          duration: 7000,
+        });
+        // Reset with potentially partial but valid data or defaults
+        form.reset(validationResult.error ? defaultResumeData : (extractedDataFromAI || defaultResumeData));
+      } else {
+        form.reset(validationResult.data);
+        toast({
+          title: "Success!",
+          description: "Resume data extracted and pre-filled.",
+          variant: "default",
+        });
+      }
 
-      toast({
-        title: "Success!",
-        description: "Resume data extracted and pre-filled.",
-        variant: "default",
-      });
     } catch (error) {
       console.error("Error extracting resume data:", error);
       let errorMessage = "Failed to extract data from resume. Please try again or fill manually.";
@@ -90,13 +98,11 @@ export default function ResumeBuilderPage() {
   const handlePrepareAndPrint = () => {
     setIsPreparingPrint(true);
     try {
-      // Validate the current form data before saving to localStorage
       const currentData = form.getValues();
       const validationResult = ExtractResumeDataOutputSchema.safeParse(currentData);
 
       if (!validationResult.success) {
         console.error("Form validation failed for printing:", validationResult.error.flatten());
-        // Trigger form validation display
         form.trigger(); 
         toast({
           title: "Validation Error",
@@ -127,15 +133,12 @@ export default function ResumeBuilderPage() {
         variant: "destructive",
       });
     } finally {
-      // Small delay to allow new tab to open
       setTimeout(() => setIsPreparingPrint(false), 1000);
     }
   };
-
-  // For the live preview, use safeParse to avoid crashing the page on invalid intermediate data
-  const previewDataResult = ExtractResumeDataOutputSchema.safeParse(watchedData);
-  const dataForPreview = previewDataResult.success ? previewDataResult.data : watchedData;
-
+  
+  const dataForPreviewResult = ExtractResumeDataOutputSchema.safeParse(watchedData);
+  const dataForPreview = dataForPreviewResult.success ? dataForPreviewResult.data : watchedData;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -146,7 +149,6 @@ export default function ResumeBuilderPage() {
             <h1 className="text-3xl font-bold text-primary">ResumeAI</h1>
           </div>
           <div className="flex items-center gap-4">
-            {/* Template select removed for simplicity, focusing on print-to-pdf of ResumePreview */}
             <Button 
               onClick={handlePrepareAndPrint} 
               variant="default" 
@@ -205,4 +207,3 @@ export default function ResumeBuilderPage() {
     </div>
   );
 }
-
