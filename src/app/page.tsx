@@ -4,9 +4,9 @@
 import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-// import html2pdf from 'html2pdf.js'; // Removed static import
+import jsPDF from 'jspdf';
 import { extractResumeData } from '@/ai/flows/extract-resume-data';
-import type { ExtractResumeDataOutput } from '@/types/resume';
+import type { ExtractResumeDataOutput, Skill, Achievement, Hobby, Experience, Education, Project, Certification, Language, VolunteerEntry, Publication } from '@/types/resume';
 import { ExtractResumeDataOutputSchema, defaultResumeData } from '@/types/resume';
 import { ResumeForm } from '@/components/resume-form';
 import { FileUpload } from '@/components/file-upload';
@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Printer, FileText } from 'lucide-react';
 import { useResumeContext } from '@/context/resume-context';
+import { isValidUrl } from '@/lib/utils';
 
 
 const fileToDataUri = (file: File): Promise<string> => {
@@ -32,12 +33,11 @@ export default function ResumeBuilderPage() {
   const [isPreparingPrint, setIsPreparingPrint] = React.useState(false);
   const { toast } = useToast();
   const { dispatch } = useResumeContext();
-  const previewRef = React.useRef<HTMLDivElement>(null);
 
   const form = useForm<ExtractResumeDataOutput>({
     resolver: zodResolver(ExtractResumeDataOutputSchema),
     defaultValues: defaultResumeData,
-    mode: 'onBlur', // Validate on blur
+    mode: 'onBlur', 
   });
 
   const watchedData = form.watch();
@@ -48,8 +48,6 @@ export default function ResumeBuilderPage() {
       const resumeDataUri = await fileToDataUri(file);
       const extractedDataFromAI = await extractResumeData({ resumeDataUri });
       
-      // The data from extractResumeData is already transformed to ExtractResumeDataOutputSchema
-      // We just need to validate it.
       const validationResult = ExtractResumeDataOutputSchema.safeParse(extractedDataFromAI || {});
       
       if (!validationResult.success) {
@@ -60,11 +58,15 @@ export default function ResumeBuilderPage() {
           variant: "destructive",
           duration: 7000,
         });
-        // Reset with whatever AI gave if partially useful, or default
         form.reset(extractedDataFromAI && typeof extractedDataFromAI === 'object' ? extractedDataFromAI : defaultResumeData);
+        if (extractedDataFromAI && typeof extractedDataFromAI === 'object') {
+            dispatch({ type: 'SET_RESUME_DATA', payload: extractedDataFromAI as ExtractResumeDataOutput });
+        } else {
+            dispatch({ type: 'SET_RESUME_DATA', payload: defaultResumeData });
+        }
       } else {
         form.reset(validationResult.data);
-        dispatch({ type: 'SET_RESUME_DATA', payload: validationResult.data }); // Update context
+        dispatch({ type: 'SET_RESUME_DATA', payload: validationResult.data }); 
         toast({
           title: "Success!",
           description: "Resume data extracted and pre-filled.",
@@ -84,16 +86,14 @@ export default function ResumeBuilderPage() {
         variant: "destructive",
         duration: 7000,
       });
-      form.reset(defaultResumeData); // Reset to default on error
-      dispatch({ type: 'SET_RESUME_DATA', payload: defaultResumeData }); // Update context with default
+      form.reset(defaultResumeData); 
+      dispatch({ type: 'SET_RESUME_DATA', payload: defaultResumeData }); 
     } finally {
       setIsLoadingAI(false);
     }
   };
   
   const handleFormSave = (values: ExtractResumeDataOutput) => {
-    // This function is called by ResumeForm's onSubmit.
-    // We update the context here as well if the form is manually submitted/validated.
     dispatch({ type: 'SET_RESUME_DATA', payload: values });
     console.log("Form data validated/updated:", values);
     toast({
@@ -131,52 +131,358 @@ export default function ResumeBuilderPage() {
         return;
       }
       
-      dispatch({ type: 'SET_RESUME_DATA', payload: validationResult.data });
+      const resumeData = validationResult.data;
+      dispatch({ type: 'SET_RESUME_DATA', payload: resumeData });
       
-      // Ensure the previewRef points to the element we want to print
-      const element = previewRef.current; 
-      if (element) {
-        const html2pdf = (await import('html2pdf.js')).default;
+      const doc = new jsPDF('p', 'pt', 'letter');
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 40;
+      const contentWidth = pageWidth - 2 * margin;
+      let currentY = margin;
+      const lineHeightMultiplier = 1.4;
+      const sectionSpacing = 15;
+      const itemSpacing = 5;
 
-        const opt = {
-          margin:       [0.5, 0.5, 0.5, 0.5], // inches [top, left, bottom, right]
-          filename:     `${validationResult.data.personalDetails?.name?.replace(/\s+/g, '_') || 'resume'}_${new Date().toISOString().slice(0,10)}.pdf`,
-          image:        { type: 'jpeg', quality: 0.98 }, // JPEG can lead to non-selectable text if not careful
-          html2canvas:  { scale: 2, useCORS: true, logging: false, letterRendering: true }, // Added letterRendering
-          jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
-          pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] } 
-        };
-        
-        const previewSectionEl = document.getElementById('preview-section');
-        let originalOverflow = '';
-        let originalMaxHeight = '';
-
-        if (previewSectionEl) {
-            originalOverflow = previewSectionEl.style.overflowY;
-            originalMaxHeight = previewSectionEl.style.maxHeight;
-            // Temporarily change styles for full content capture
-            previewSectionEl.style.overflowY = 'visible'; 
-            previewSectionEl.style.maxHeight = 'none';    
+      const checkAndAddPage = () => {
+        if (currentY > pageHeight - margin) {
+          doc.addPage();
+          currentY = margin;
         }
+      };
 
-        await html2pdf().from(element).set(opt).save();
-        
-        // Restore original styles
-        if (previewSectionEl) {
-            previewSectionEl.style.overflowY = originalOverflow;
-            previewSectionEl.style.maxHeight = originalMaxHeight;
+      const addWrappedText = (text: string, x: number, y: number, maxWidth: number, options: { fontStyle?: string, fontSize?: number, color?: string, isLink?: boolean, url?: string } = {}) => {
+        if (!text) return;
+        const { fontStyle = 'normal', fontSize = 10, color = '#000000' } = options;
+        doc.setFont('helvetica', fontStyle);
+        doc.setFontSize(fontSize);
+        doc.setTextColor(color);
+
+        const lines = doc.splitTextToSize(text, maxWidth);
+        lines.forEach((line: string, index: number) => {
+          checkAndAddPage();
+          if (options.isLink && options.url) {
+            doc.textWithLink(line, x, currentY, { url: options.url });
+          } else {
+            doc.text(line, x, currentY);
+          }
+          if (index < lines.length -1) currentY += fontSize * lineHeightMultiplier;
+        });
+        currentY += fontSize * lineHeightMultiplier; // Add space after the block
+      };
+      
+      const addSectionTitle = (title: string) => {
+        checkAndAddPage();
+        currentY += sectionSpacing / 2; // Extra space before title
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.setTextColor('#2c3e50'); // Primary color
+        doc.text(title.toUpperCase(), margin, currentY);
+        currentY += 14 * lineHeightMultiplier;
+        doc.setDrawColor('#ecf0f1'); // Light gray for line
+        doc.line(margin, currentY - (14 * lineHeightMultiplier / 2) + 2, pageWidth - margin, currentY - (14 * lineHeightMultiplier / 2) + 2);
+        currentY += itemSpacing;
+      };
+
+
+      // Personal Details
+      if (resumeData.personalDetails) {
+        const { name, email, phone, linkedin, portfolioGithubUrl, professionalTitle, location } = resumeData.personalDetails;
+        if (name) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(24);
+          doc.setTextColor('#2c3e50');
+          const nameWidth = doc.getTextWidth(name.toUpperCase());
+          doc.text(name.toUpperCase(), (pageWidth - nameWidth) / 2, currentY);
+          currentY += 24 * lineHeightMultiplier * 0.8;
         }
+        if (professionalTitle) {
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(12);
+          doc.setTextColor('#3498db'); // Accent color
+          const titleWidth = doc.getTextWidth(professionalTitle);
+          doc.text(professionalTitle, (pageWidth - titleWidth) / 2, currentY);
+          currentY += 12 * lineHeightMultiplier;
+        }
+        
+        let contactLine = '';
+        if (location) contactLine += `${location} | `;
+        if (phone) contactLine += `P: ${phone} | `;
+        if (email) contactLine += `E: ${email}`;
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor('#555555');
+        const contactWidth = doc.getTextWidth(contactLine);
+        doc.text(contactLine, (pageWidth - contactWidth) / 2, currentY);
+        currentY += 9 * lineHeightMultiplier;
 
-      } else {
-        toast({
-          title: "Preview Element Not Found",
-          description: "Could not find the resume preview to generate PDF.",
-          variant: "destructive",
+        let linkLine = '';
+        if (linkedin && isValidUrl(linkedin)) linkLine += `LinkedIn: ${linkedin}`;
+        if (portfolioGithubUrl && isValidUrl(portfolioGithubUrl)) {
+            if (linkLine) linkLine += ' | ';
+            linkLine += `GitHub: ${portfolioGithubUrl}`;
+        }
+        if(linkLine){
+            const linkLineY = currentY;
+            doc.setFontSize(9);
+            const textParts = [];
+            let currentX = (pageWidth - doc.getTextWidth(linkLine.replace(/LinkedIn:.*?(\||$)/, 'LinkedIn ').replace(/GitHub:.*?$/, ' GitHub'))) / 2;
+
+            if (linkedin && isValidUrl(linkedin)) {
+                doc.textWithLink('LinkedIn', currentX, linkLineY, { url: linkedin });
+                currentX += doc.getTextWidth('LinkedIn') + 5;
+            }
+            if (linkedin && isValidUrl(linkedin) && portfolioGithubUrl && isValidUrl(portfolioGithubUrl)) {
+                 doc.text('|', currentX, linkLineY);
+                 currentX += doc.getTextWidth('|') + 5;
+            }
+            if (portfolioGithubUrl && isValidUrl(portfolioGithubUrl)) {
+                doc.textWithLink('GitHub', currentX, linkLineY, { url: portfolioGithubUrl });
+            }
+            currentY += 9 * lineHeightMultiplier;
+        }
+        currentY += sectionSpacing;
+      }
+
+      // Summary
+      if (resumeData.summary) {
+        addSectionTitle('Summary');
+        addWrappedText(resumeData.summary, margin, currentY, contentWidth, { fontSize: 10 });
+      }
+
+      // Experience
+      if (resumeData.experience && resumeData.experience.length > 0) {
+        addSectionTitle('Work Experience');
+        resumeData.experience.forEach((exp: Experience) => {
+          checkAndAddPage();
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(11);
+          doc.setTextColor('#000000');
+          doc.text(exp.title, margin, currentY);
+          
+          let companyLine = exp.company;
+          if (exp.location) companyLine += `, ${exp.location}`;
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(10);
+          doc.setTextColor('#3498db');
+          doc.text(companyLine, margin, currentY + 11 * lineHeightMultiplier * 0.8);
+
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(9);
+          doc.setTextColor('#555555');
+          const dateText = `${exp.startDate || ''}${exp.endDate ? ` - ${exp.endDate}` : ' - Present'}`;
+          const dateWidth = doc.getTextWidth(dateText);
+          doc.text(dateText, pageWidth - margin - dateWidth, currentY);
+          currentY += 11 * lineHeightMultiplier * 0.8 + 10 * lineHeightMultiplier * 0.8;
+          
+          if (exp.description) {
+            addWrappedText(exp.description, margin + 10, currentY, contentWidth - 10, { fontSize: 10 });
+          }
+          currentY += itemSpacing; 
+        });
+      }
+      
+      // Projects
+      if (resumeData.projects && resumeData.projects.length > 0) {
+        addSectionTitle('Projects');
+        resumeData.projects.forEach((proj: Project) => {
+          checkAndAddPage();
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(11);
+          doc.setTextColor('#000000');
+          let projectTitle = proj.title;
+          doc.text(projectTitle, margin, currentY);
+          if (proj.link && isValidUrl(proj.link)) {
+            const titleWidth = doc.getTextWidth(projectTitle);
+            doc.setFontSize(9);
+            doc.setTextColor('#3498db');
+            doc.textWithLink('(Link)', margin + titleWidth + 5, currentY, { url: proj.link });
+          }
+
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(9);
+          doc.setTextColor('#555555');
+          const dateText = `${proj.startDate || ''}${proj.endDate ? ` - ${proj.endDate}` : ''}`;
+          if (dateText.replace(/\s|-/g, '')) { // Only print if there's actual date content
+            const dateWidth = doc.getTextWidth(dateText);
+            doc.text(dateText, pageWidth - margin - dateWidth, currentY);
+          }
+          currentY += 11 * lineHeightMultiplier;
+          
+          if (proj.description) {
+            addWrappedText(proj.description, margin + 10, currentY, contentWidth - 10, { fontSize: 10 });
+          }
+          currentY += itemSpacing;
         });
       }
 
+      // Education
+      if (resumeData.education && resumeData.education.length > 0) {
+        addSectionTitle('Education');
+        resumeData.education.forEach((edu: Education) => {
+          checkAndAddPage();
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(11);
+          doc.setTextColor('#000000');
+          doc.text(edu.degree, margin, currentY);
+
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(10);
+          doc.setTextColor('#3498db');
+          let institutionLine = edu.institution;
+          if(edu.location) institutionLine += `, ${edu.location}`;
+          doc.text(institutionLine, margin, currentY + 11 * lineHeightMultiplier * 0.8);
+          
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(9);
+          doc.setTextColor('#555555');
+          const dateText = `${edu.startDate || ''}${edu.endDate || edu.graduationYear ? ` - ${edu.endDate || edu.graduationYear}` : ''}`;
+          const dateWidth = doc.getTextWidth(dateText);
+          doc.text(dateText, pageWidth - margin - dateWidth, currentY);
+          currentY += 11 * lineHeightMultiplier * 0.8 + 10 * lineHeightMultiplier * 0.8;
+
+          if (edu.gpa) {
+             addWrappedText(`GPA: ${edu.gpa}`, margin + 10, currentY, contentWidth -10, {fontSize: 10});
+          }
+          if (edu.description) {
+            addWrappedText(edu.description, margin + 10, currentY, contentWidth - 10, { fontSize: 10 });
+          }
+          currentY += itemSpacing;
+        });
+      }
+
+      // Skills
+      if (resumeData.skills && resumeData.skills.length > 0) {
+        addSectionTitle('Skills');
+        const skillsText = resumeData.skills.map((s: Skill) => s.value).join(', ');
+        addWrappedText(skillsText, margin, currentY, contentWidth, { fontSize: 10 });
+      }
+
+      // Certifications
+      if (resumeData.certifications && resumeData.certifications.length > 0) {
+        addSectionTitle('Certifications');
+        resumeData.certifications.forEach((cert: Certification) => {
+            checkAndAddPage();
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.setTextColor('#000000');
+            let certTitle = cert.title;
+            doc.text(certTitle, margin, currentY);
+            if (cert.link && isValidUrl(cert.link)) {
+                const titleWidth = doc.getTextWidth(certTitle);
+                doc.setFontSize(9);
+                doc.setTextColor('#3498db');
+                doc.textWithLink('(Link)', margin + titleWidth + 5, currentY, { url: cert.link });
+            }
+            currentY += 10 * lineHeightMultiplier;
+
+            if (cert.issuingOrganization) {
+                 addWrappedText(`Issued by: ${cert.issuingOrganization}`, margin +10, currentY, contentWidth -10, {fontSize: 9, fontStyle: 'italic'});
+            }
+             const dateText = `${cert.issueDate ? `Issued: ${cert.issueDate}` : ''}${cert.expiryDate ? ` | Expires: ${cert.expiryDate}` : ''}`;
+            if(dateText.replace(/\s|-|Issued:|Expires:|\|/gi, '')) {
+                 addWrappedText(dateText, margin + 10, currentY, contentWidth -10, {fontSize: 9, color: '#555555'});
+            }
+            if (cert.description) {
+                addWrappedText(cert.description, margin + 10, currentY, contentWidth - 10, { fontSize: 9 });
+            }
+            currentY += itemSpacing;
+        });
+      }
+      
+      // Languages
+      if (resumeData.languages && resumeData.languages.length > 0) {
+        addSectionTitle('Languages');
+        const langText = resumeData.languages.map((l: Language) => `${l.language} (${l.proficiency})`).join('; ');
+        addWrappedText(langText, margin, currentY, contentWidth, { fontSize: 10 });
+      }
+
+      // Achievements
+      if (resumeData.achievements && resumeData.achievements.length > 0) {
+        addSectionTitle('Achievements');
+        resumeData.achievements.forEach((ach: Achievement) => {
+          checkAndAddPage();
+          addWrappedText(`• ${ach.value}`, margin, currentY, contentWidth, { fontSize: 10 });
+        });
+      }
+      
+      // Hobbies
+      if (resumeData.hobbies && resumeData.hobbies.length > 0) {
+        addSectionTitle('Hobbies');
+        const hobbiesText = resumeData.hobbies.map((h: Hobby) => h.value).join(', ');
+        addWrappedText(hobbiesText, margin, currentY, contentWidth, { fontSize: 10 });
+      }
+
+      // Volunteer Experience
+      if (resumeData.volunteerExperience && resumeData.volunteerExperience.length > 0) {
+        addSectionTitle('Volunteer Experience');
+        resumeData.volunteerExperience.forEach((vol: VolunteerEntry) => {
+          checkAndAddPage();
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(11);
+          doc.setTextColor('#000000');
+          doc.text(vol.role || vol.title || 'Volunteer', margin, currentY);
+          
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(10);
+          doc.setTextColor('#3498db');
+          doc.text(vol.organization + (vol.location ? `, ${vol.location}` : ''), margin, currentY + 11 * lineHeightMultiplier * 0.8);
+
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(9);
+          doc.setTextColor('#555555');
+          const dateText = `${vol.startDate || ''}${vol.endDate ? ` - ${vol.endDate}` : ''}`;
+          const dateWidth = doc.getTextWidth(dateText);
+          doc.text(dateText, pageWidth - margin - dateWidth, currentY);
+          currentY += 11 * lineHeightMultiplier * 0.8 + 10 * lineHeightMultiplier * 0.8;
+          
+          if (vol.description) {
+            addWrappedText(vol.description, margin + 10, currentY, contentWidth - 10, { fontSize: 10 });
+          }
+          currentY += itemSpacing;
+        });
+      }
+
+      // Publications
+      if (resumeData.publications && resumeData.publications.length > 0) {
+        addSectionTitle('Publications');
+        resumeData.publications.forEach((pub: Publication) => {
+          checkAndAddPage();
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.setTextColor('#000000');
+          let pubTitle = pub.title;
+          doc.text(pubTitle, margin, currentY);
+          if (pub.link && isValidUrl(pub.link)) {
+            const titleWidth = doc.getTextWidth(pubTitle);
+            doc.setFontSize(9);
+            doc.setTextColor('#3498db');
+            doc.textWithLink('(Link)', margin + titleWidth + 5, currentY, { url: pub.link });
+          }
+          currentY += 10 * lineHeightMultiplier;
+
+          if (pub.authors && pub.authors.length > 0) {
+             addWrappedText(`Authors: ${pub.authors.join(', ')}`, margin +10, currentY, contentWidth -10, {fontSize: 9, fontStyle: 'italic'});
+          }
+          if (pub.journalOrConference) {
+             addWrappedText(pub.journalOrConference, margin +10, currentY, contentWidth -10, {fontSize: 9});
+          }
+          if (pub.date) {
+             addWrappedText(`Date: ${pub.date}`, margin +10, currentY, contentWidth -10, {fontSize: 9, color: '#555555'});
+          }
+          if (pub.description) {
+            addWrappedText(pub.description, margin + 10, currentY, contentWidth - 10, { fontSize: 9 });
+          }
+          currentY += itemSpacing;
+        });
+      }
+
+
+      doc.save(`${resumeData.personalDetails?.name?.replace(/\s+/g, '_') || 'resume'}_${new Date().toISOString().slice(0,10)}.pdf`);
+
     } catch (error) {
-      console.error("Error generating PDF with html2pdf.js:", error);
+      console.error("Error generating PDF with jsPDF:", error);
       toast({
         title: "PDF Generation Error",
         description: "An unexpected error occurred while generating the PDF. Please try again.",
@@ -257,7 +563,7 @@ export default function ResumeBuilderPage() {
             className="sticky top-[calc(theme(spacing.28)_+_1rem)] lg:top-28 max-h-[calc(100vh_-_theme(spacing.28)_-_2rem)] lg:max-h-[calc(100vh_-_8rem)] overflow-y-auto rounded-lg shadow-xl border bg-card 
                        print:!static print:!top-0 print:!max-h-full print:!overflow-visible print:shadow-none print:border-none print:bg-transparent print:m-0 print:p-0 print:col-span-2"
           >
-             <ResumePreview ref={previewRef} data={dataForPreview} />
+             <ResumePreview data={dataForPreview} />
           </section>
         </div>
       </main>

@@ -23,7 +23,8 @@ const ListItem: React.FC<{ children: React.ReactNode; className?: string }> = ({
 );
 
 
-const ResumePreview = React.forwardRef<HTMLDivElement, ResumePreviewProps>(({ data }, ref) => {
+// Changed: Removed React.forwardRef and ref parameter
+export function ResumePreview({ data }: ResumePreviewProps) {
   const { 
     personalDetails, 
     summary, 
@@ -53,7 +54,8 @@ const ResumePreview = React.forwardRef<HTMLDivElement, ResumePreviewProps>(({ da
 
   if (!hasContent) {
     return (
-      <Card ref={ref} className="resume-preview-card shadow-lg print:shadow-none print:border-none">
+      // Changed: Removed ref from Card
+      <Card className="resume-preview-card shadow-lg print:shadow-none print:border-none">
         <CardContent className="p-6 print:p-4">
           <p className="text-muted-foreground text-center p-10">
             Fill in the form or upload a resume to see the preview here.
@@ -64,7 +66,8 @@ const ResumePreview = React.forwardRef<HTMLDivElement, ResumePreviewProps>(({ da
   }
 
   return (
-    <Card ref={ref} id='resume-content-for-pdf' className="resume-preview-card shadow-lg print:shadow-none print:border-none bg-white text-black">
+    // Changed: Removed ref from Card, id 'resume-content-for-pdf' can be kept if useful for other things or removed
+    <Card id='resume-content-for-pdf' className="resume-preview-card shadow-lg print:shadow-none print:border-none bg-white text-black">
       <CardContent className="p-6 print:p-4 space-y-3 print:space-y-2">
         {/* Personal Details */}
         {personalDetails && (personalDetails.name || personalDetails.email || personalDetails.phone || personalDetails.linkedin || personalDetails.portfolioGithubUrl || personalDetails.location || personalDetails.professionalTitle) && (
@@ -311,7 +314,8 @@ const ResumePreview = React.forwardRef<HTMLDivElement, ResumePreviewProps>(({ da
       </CardContent>
     </Card>
   );
-});
+}
 
-ResumePreview.displayName = "ResumePreview";
-export { ResumePreview };
+// Changed: Removed display name as it's not a forwardRef anymore
+// ResumePreview.displayName = "ResumePreview";
+// export { ResumePreview }; // This export style is fine for a regular function component

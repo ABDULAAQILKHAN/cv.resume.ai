@@ -111,7 +111,7 @@
   }
 }
 
-/* General print styles for html2pdf.js or browser print */
+/* General print styles for browser print (window.print()) */
 @media print {
   body, html {
     -webkit-print-color-adjust: exact !important;
@@ -149,7 +149,7 @@
     max-height: none !important; 
     overflow: visible !important;
     margin: 0 !important;
-    padding: 0.5in !important; /* A4-like margins for print; html2pdf.js uses its own margin config */
+    padding: 0.5in !important; /* A4-like margins for print */
     box-shadow: none !important;
     border: none !important;
     background-color: white !important;
@@ -157,7 +157,7 @@
     box-sizing: border-box !important;
   }
 
-  /* Styles for the ResumePreview component itself when printed or captured by html2pdf.js */
+  /* Styles for the ResumePreview component itself when printed */
   .resume-preview-card {
     box-shadow: none !important;
     border: none !important;
@@ -213,13 +213,6 @@
     color: #0000EE !important; /* Standard link blue, or just black */
     text-decoration: none !important; 
   }
-  /*
-  .resume-preview-card a:after { // Optionally show URL for links
-    // content: " (" attr(href) ")";
-    // font-size: 8pt;
-    // color: #555;
-  }
-  */
 
   .resume-preview-card section,
   .resume-preview-card div.mb-3, 
@@ -247,8 +240,8 @@
   [class~="print:bg-transparent"] { background-color: transparent !important; }
   [class~="print:m-0"] { margin: 0 !important; }
   [class~="print:p-0"] { padding: 0 !important; }
-  [class~="print:!max-h-full"] { max-height:none !important; } /* Use important if needed */
-  [class~="print:!overflow-visible"] { overflow: visible !important; } /* Use important if needed */
+  [class~="print:!max-h-full"] { max-height:none !important; } 
+  [class~="print:!overflow-visible"] { overflow: visible !important; } 
   [class~="print:!static"] { position: static !important; }
   [class~="print:!top-0"] { top: 0 !important; }
   [class~="print:col-span-2"] { grid-column: span 2 / span 2 !important; }
