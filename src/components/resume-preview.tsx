@@ -2,10 +2,10 @@
 "use client";
 
 import * as React from 'react';
-import type { ExtractResumeDataOutput, Project, Certification, Skill, Achievement, Hobby, Language, VolunteerEntry, Publication } from '@/types/resume';
+import type { ExtractResumeDataOutput, Project, Certification, Skill, Achievement, Hobby, Language, VolunteerEntry, Publication, Education, Experience } from '@/types/resume';
 import { Card, CardContent } from '@/components/ui/card';
-import { User, Briefcase, GraduationCap, Wand2, Mail, Phone, LinkedinIcon, Link as LinkIcon, AlignLeft, Award, Smile, BadgeCheck, Lightbulb, Languages as LanguagesIcon, Users, FileText as PublicationIcon, MapPin, Star } from 'lucide-react';
-import { isValidUrl } from '@/lib/utils'; // Assuming you'll create this utility
+import { User, Briefcase, GraduationCap, Wand2, Mail, Phone, LinkedinIcon, Link as LinkIcon, AlignLeft, Award, Smile, BadgeCheck, Lightbulb, Languages as LanguagesIcon, Users, FileText as PublicationIcon, MapPin } from 'lucide-react';
+import { isValidUrl } from '@/lib/utils';
 
 interface ResumePreviewProps {
   data: ExtractResumeDataOutput;
@@ -13,7 +13,8 @@ interface ResumePreviewProps {
 
 const SectionTitle: React.FC<{ icon: React.ElementType; title: string; className?: string }> = ({ icon: Icon, title, className = "" }) => (
   <h2 className={`text-xl font-semibold text-primary mt-4 mb-2 flex items-center gap-2 border-b border-border pb-1 print:mt-3 print:mb-1 print:pb-0.5 ${className}`}>
-    <Icon className="h-5 w-5 print:h-4 print:w-4" /> {title.toUpperCase()}
+    <Icon className="h-5 w-5 print:h-4 print:w-4 flex-shrink-0" />
+    <span className="flex-grow">{title.toUpperCase()}</span>
   </h2>
 );
 
@@ -63,10 +64,10 @@ const ResumePreview = React.forwardRef<HTMLDivElement, ResumePreviewProps>(({ da
   }
 
   return (
-    <Card ref={ref} id='resume-content-for-pdf' className="resume-preview-card shadow-lg print:shadow-none print:border-none bg-white text-black"> {/* Ensure text is black for PDF */}
+    <Card ref={ref} id='resume-content-for-pdf' className="resume-preview-card shadow-lg print:shadow-none print:border-none bg-white text-black">
       <CardContent className="p-6 print:p-4 space-y-3 print:space-y-2">
         {/* Personal Details */}
-        {personalDetails && (personalDetails.name || personalDetails.email || personalDetails.phone || personalDetails.linkedin) && (
+        {personalDetails && (personalDetails.name || personalDetails.email || personalDetails.phone || personalDetails.linkedin || personalDetails.portfolioGithubUrl || personalDetails.location || personalDetails.professionalTitle) && (
           <section className="text-center mb-4 print:mb-2 break-inside-avoid">
             {personalDetails.name && (
               <h1 className="text-3xl font-bold text-primary print:text-2xl">{personalDetails.name.toUpperCase()}</h1>
@@ -116,13 +117,13 @@ const ResumePreview = React.forwardRef<HTMLDivElement, ResumePreviewProps>(({ da
         {experience && experience.length > 0 && (
           <section className="break-inside-avoid">
             <SectionTitle icon={Briefcase} title="Work Experience" />
-            {experience.map((exp, index) => (
+            {experience.map((exp: Experience, index: number) => (
               <div key={index} className="mb-3 print:mb-2 break-inside-avoid">
                 <h3 className="text-lg font-medium print:text-base">{exp.title}</h3>
                 <div className="flex justify-between items-baseline">
                   <p className="text-md font-semibold text-accent print:text-sm">{exp.company}</p>
                   <p className="text-xs text-muted-foreground uppercase print:text-2xs">
-                    {exp.startDate} - {exp.endDate || 'Present'}
+                    {exp.startDate} {exp.endDate && `- ${exp.endDate}`}
                   </p>
                 </div>
                  {exp.location && <p className="text-xs text-muted-foreground print:text-2xs italic">{exp.location}</p>}
@@ -143,7 +144,7 @@ const ResumePreview = React.forwardRef<HTMLDivElement, ResumePreviewProps>(({ da
                     {proj.title}
                     {proj.link && isValidUrl(proj.link) && (
                       <a href={proj.link} target="_blank" rel="noopener noreferrer" className="ml-2 text-accent hover:underline">
-                        <LinkIcon className="inline h-4 w-4 print:h-3 print:w-3" />
+                        <LinkIcon className="inline h-4 w-4 print:h-3 print:w-3 align-middle" />
                       </a>
                     )}
                   </h3>
@@ -163,16 +164,17 @@ const ResumePreview = React.forwardRef<HTMLDivElement, ResumePreviewProps>(({ da
         {education && education.length > 0 && (
           <section className="break-inside-avoid">
             <SectionTitle icon={GraduationCap} title="Education" />
-            {education.map((edu, index) => (
+            {education.map((edu: Education, index: number) => (
               <div key={index} className="mb-3 print:mb-2 break-inside-avoid">
-                <h3 className="text-lg font-medium print:text-base">{edu.degree}</h3>
                  <div className="flex justify-between items-baseline">
-                    <p className="text-md font-semibold text-accent print:text-sm">{edu.institution}</p>
+                    <h3 className="text-lg font-medium print:text-base">{edu.degree}</h3>
                     <p className="text-xs text-muted-foreground uppercase print:text-2xs">
-                        {edu.graduationYear || `${edu.startDate} - ${edu.endDate}`}
+                        {edu.graduationYear || `${edu.startDate || ''}${edu.startDate && edu.endDate ? ' - ' : ''}${edu.endDate || ''}`}
                     </p>
                 </div>
+                <p className="text-md font-semibold text-accent print:text-sm">{edu.institution}</p>
                 {edu.location && <p className="text-xs text-muted-foreground print:text-2xs italic">{edu.location}</p>}
+                {edu.gpa && <p className="text-xs text-muted-foreground print:text-2xs">GPA: {edu.gpa}</p>}
                 {edu.description && <p className="mt-1 text-sm whitespace-pre-line print:text-xs">{edu.description}</p>}
               </div>
             ))}
@@ -204,11 +206,11 @@ const ResumePreview = React.forwardRef<HTMLDivElement, ResumePreviewProps>(({ da
                         {cert.title}
                         {cert.link && isValidUrl(cert.link) && (
                         <a href={cert.link} target="_blank" rel="noopener noreferrer" className="ml-2 text-accent hover:underline">
-                            <LinkIcon className="inline h-4 w-4 print:h-3 print:w-3" />
+                            <LinkIcon className="inline h-4 w-4 print:h-3 print:w-3 align-middle" />
                         </a>
                         )}
                     </h3>
-                    {(cert.issueDate) && ( // Assuming startDate is issueDate for certs
+                    {(cert.issueDate) && ( 
                         <p className="text-xs text-muted-foreground uppercase print:text-2xs">
                            Issued: {cert.issueDate} {cert.expiryDate && `| Expires: ${cert.expiryDate}`}
                         </p>
@@ -241,11 +243,11 @@ const ResumePreview = React.forwardRef<HTMLDivElement, ResumePreviewProps>(({ da
             <SectionTitle icon={Users} title="Volunteer Experience" />
             {volunteerExperience.map((vol: VolunteerEntry, index: number) => (
               <div key={index} className="mb-3 print:mb-2 break-inside-avoid">
-                <h3 className="text-lg font-medium print:text-base">{vol.title}</h3>
+                <h3 className="text-lg font-medium print:text-base">{vol.role || vol.title}</h3>
                 <div className="flex justify-between items-baseline">
                   <p className="text-md font-semibold text-accent print:text-sm">{vol.organization}</p>
                   <p className="text-xs text-muted-foreground uppercase print:text-2xs">
-                    {vol.startDate} - {vol.endDate || 'Present'}
+                    {vol.startDate} {vol.endDate && `- ${vol.endDate}`}
                   </p>
                 </div>
                 {vol.location && <p className="text-xs text-muted-foreground print:text-2xs italic">{vol.location}</p>}
@@ -265,10 +267,11 @@ const ResumePreview = React.forwardRef<HTMLDivElement, ResumePreviewProps>(({ da
                   {pub.title}
                   {pub.link && isValidUrl(pub.link) && (
                     <a href={pub.link} target="_blank" rel="noopener noreferrer" className="ml-2 text-accent hover:underline">
-                      <LinkIcon className="inline h-4 w-4 print:h-3 print:w-3" />
+                      <LinkIcon className="inline h-4 w-4 print:h-3 print:w-3 align-middle" />
                     </a>
                   )}
                 </h3>
+                {pub.authors && <p className="text-sm text-muted-foreground print:text-xs italic">Authors: {pub.authors.join(", ")}</p>}
                 {pub.journalOrConference && <p className="text-sm font-semibold text-accent print:text-xs">{pub.journalOrConference}</p>}
                 {pub.date && <p className="text-xs text-muted-foreground uppercase print:text-2xs">Date: {pub.date}</p>}
                 {pub.description && <p className="mt-1 text-sm whitespace-pre-line print:text-xs">{pub.description}</p>}
@@ -312,4 +315,3 @@ const ResumePreview = React.forwardRef<HTMLDivElement, ResumePreviewProps>(({ da
 
 ResumePreview.displayName = "ResumePreview";
 export { ResumePreview };
-

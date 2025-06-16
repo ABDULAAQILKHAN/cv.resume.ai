@@ -46,11 +46,11 @@ export default function ResumeBuilderPage() {
     setIsLoadingAI(true);
     try {
       const resumeDataUri = await fileToDataUri(file);
-      const extractedRawData = await extractResumeData({ resumeDataUri });
+      const extractedDataFromAI = await extractResumeData({ resumeDataUri });
       
-      // Parse the already transformed data from the AI flow
-      // (which should conform to ExtractResumeDataOutputSchema)
-      const validationResult = ExtractResumeDataOutputSchema.safeParse(extractedRawData || {});
+      // The data from extractResumeData is already transformed to ExtractResumeDataOutputSchema
+      // We just need to validate it.
+      const validationResult = ExtractResumeDataOutputSchema.safeParse(extractedDataFromAI || {});
       
       if (!validationResult.success) {
         console.error("Validation failed for AI extracted data:", validationResult.error.flatten());
@@ -61,9 +61,10 @@ export default function ResumeBuilderPage() {
           duration: 7000,
         });
         // Reset with whatever AI gave if partially useful, or default
-        form.reset(extractedRawData && typeof extractedRawData === 'object' ? extractedRawData : defaultResumeData);
+        form.reset(extractedDataFromAI && typeof extractedDataFromAI === 'object' ? extractedDataFromAI : defaultResumeData);
       } else {
         form.reset(validationResult.data);
+        dispatch({ type: 'SET_RESUME_DATA', payload: validationResult.data }); // Update context
         toast({
           title: "Success!",
           description: "Resume data extracted and pre-filled.",
@@ -84,14 +85,16 @@ export default function ResumeBuilderPage() {
         duration: 7000,
       });
       form.reset(defaultResumeData); // Reset to default on error
+      dispatch({ type: 'SET_RESUME_DATA', payload: defaultResumeData }); // Update context with default
     } finally {
       setIsLoadingAI(false);
     }
   };
   
   const handleFormSave = (values: ExtractResumeDataOutput) => {
-    // This function is called by ResumeForm's onSubmit, but since we trigger validation
-    // before printing/downloading, its primary role here might be just for explicit saves if we had such a button.
+    // This function is called by ResumeForm's onSubmit.
+    // We update the context here as well if the form is manually submitted/validated.
+    dispatch({ type: 'SET_RESUME_DATA', payload: values });
     console.log("Form data validated/updated:", values);
     toast({
         title: "Resume Updated",
@@ -130,17 +133,18 @@ export default function ResumeBuilderPage() {
       
       dispatch({ type: 'SET_RESUME_DATA', payload: validationResult.data });
       
-      const element = previewRef.current;
+      // Ensure the previewRef points to the element we want to print
+      const element = previewRef.current; 
       if (element) {
-        const html2pdf = (await import('html2pdf.js')).default; // Dynamic import
+        const html2pdf = (await import('html2pdf.js')).default;
 
         const opt = {
           margin:       [0.5, 0.5, 0.5, 0.5], // inches [top, left, bottom, right]
           filename:     `${validationResult.data.personalDetails?.name?.replace(/\s+/g, '_') || 'resume'}_${new Date().toISOString().slice(0,10)}.pdf`,
-          image:        { type: 'jpeg', quality: 0.98 },
-          html2canvas:  { scale: 2, useCORS: true, logging: false },
+          image:        { type: 'jpeg', quality: 0.98 }, // JPEG can lead to non-selectable text if not careful
+          html2canvas:  { scale: 2, useCORS: true, logging: false, letterRendering: true }, // Added letterRendering
           jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
-          pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] as any } 
+          pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] } 
         };
         
         const previewSectionEl = document.getElementById('preview-section');
@@ -150,12 +154,14 @@ export default function ResumeBuilderPage() {
         if (previewSectionEl) {
             originalOverflow = previewSectionEl.style.overflowY;
             originalMaxHeight = previewSectionEl.style.maxHeight;
+            // Temporarily change styles for full content capture
             previewSectionEl.style.overflowY = 'visible'; 
             previewSectionEl.style.maxHeight = 'none';    
         }
 
         await html2pdf().from(element).set(opt).save();
         
+        // Restore original styles
         if (previewSectionEl) {
             previewSectionEl.style.overflowY = originalOverflow;
             previewSectionEl.style.maxHeight = originalMaxHeight;
@@ -173,7 +179,7 @@ export default function ResumeBuilderPage() {
       console.error("Error generating PDF with html2pdf.js:", error);
       toast({
         title: "PDF Generation Error",
-        description: "An unexpected error occurred while generating the PDF.",
+        description: "An unexpected error occurred while generating the PDF. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -181,11 +187,9 @@ export default function ResumeBuilderPage() {
     }
   };
   
-  // For live preview, use safeParse to avoid crashing on invalid intermediate data
-  // but also show default data if parse fails to avoid blank preview during typing
-  const safeParseResult = ExtractResumeDataOutputSchema.safeParse(watchedData);
-  const dataForPreview = safeParseResult.success
-    ? safeParseResult.data
+  const safeParseResultForPreview = ExtractResumeDataOutputSchema.safeParse(watchedData);
+  const dataForPreview = safeParseResultForPreview.success
+    ? safeParseResultForPreview.data
     : defaultResumeData;
 
 
@@ -214,7 +218,7 @@ export default function ResumeBuilderPage() {
       </header>
 
       <main className="container mx-auto p-4 md:p-8 print:p-0">
-        <div className="grid lg:grid-cols-2 gap-8 items-start print:hidden print:grid-cols-1"> {/* Hide grid for print */}
+        <div className="grid lg:grid-cols-2 gap-8 items-start print:hidden print:grid-cols-1">
           <section id="input-section" className="space-y-8 print:hidden">
             <Card className="shadow-lg">
               <CardHeader>
@@ -263,4 +267,3 @@ export default function ResumeBuilderPage() {
     </div>
   );
 }
-
