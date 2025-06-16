@@ -4,9 +4,10 @@
 import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import html2pdf from 'html2pdf.js';
 import { extractResumeData } from '@/ai/flows/extract-resume-data';
 import type { ExtractResumeDataOutput } from '@/types/resume';
-import { ExtractResumeDataOutputSchema, LLMResumeDataOutputSchema, defaultResumeData } from '@/types/resume';
+import { ExtractResumeDataOutputSchema, defaultResumeData } from '@/types/resume';
 import { ResumeForm } from '@/components/resume-form';
 import { FileUpload } from '@/components/file-upload';
 import { ResumePreview } from '@/components/resume-preview';
@@ -31,11 +32,12 @@ export default function ResumeBuilderPage() {
   const [isPreparingPrint, setIsPreparingPrint] = React.useState(false);
   const { toast } = useToast();
   const { dispatch } = useResumeContext();
+  const previewRef = React.useRef<HTMLDivElement>(null);
 
   const form = useForm<ExtractResumeDataOutput>({
     resolver: zodResolver(ExtractResumeDataOutputSchema),
     defaultValues: defaultResumeData,
-    mode: 'onBlur',
+    mode: 'onBlur', // Validate on blur
   });
 
   const watchedData = form.watch();
@@ -44,11 +46,8 @@ export default function ResumeBuilderPage() {
     setIsLoadingAI(true);
     try {
       const resumeDataUri = await fileToDataUri(file);
-      // The extractResumeData flow already performs transformations and should return
-      // data conforming to ExtractResumeDataOutputSchema.
       const extractedDataFromAI = await extractResumeData({ resumeDataUri });
       
-      // Validate the data from AI using the final application schema.
       const validationResult = ExtractResumeDataOutputSchema.safeParse(extractedDataFromAI || {});
       
       if (!validationResult.success) {
@@ -59,8 +58,7 @@ export default function ResumeBuilderPage() {
           variant: "destructive",
           duration: 7000,
         });
-        // Reset with default data, but also consider populating form with what was successfully extracted if possible,
-        // though Zod's .parse is all or nothing. For now, reset to default or what AI gave (if partially useful).
+        // Reset with default data or whatever AI gave if partially useful
         form.reset(extractedDataFromAI && typeof extractedDataFromAI === 'object' ? extractedDataFromAI : defaultResumeData);
       } else {
         form.reset(validationResult.data);
@@ -75,11 +73,7 @@ export default function ResumeBuilderPage() {
       console.error("Error extracting resume data:", error);
       let errorMessage = "Failed to extract data from resume. Please try again or fill manually.";
       if (error instanceof Error) {
-        if ('details' in error && typeof (error as any).details === 'string') {
-          errorMessage += ` Details: ${(error as any).details}`;
-        } else {
-          errorMessage += ` Details: ${error.message}`;
-        }
+        errorMessage += ` Details: ${error.message}`;
       }
       toast({
         title: "Error",
@@ -87,14 +81,19 @@ export default function ResumeBuilderPage() {
         variant: "destructive",
         duration: 7000,
       });
-      form.reset(defaultResumeData);
+      form.reset(defaultResumeData); // Reset to default on error
     } finally {
       setIsLoadingAI(false);
     }
   };
   
   const handleFormSave = (values: ExtractResumeDataOutput) => {
+    // This function is called by ResumeForm's onSubmit, but since we trigger validation
+    // before printing/downloading, its primary role here might be just for explicit saves if we had such a button.
+    // For now, it mainly serves to update the context if we were to call it directly.
+    // The main data update for printing happens in handlePrepareAndPrint.
     console.log("Form data validated/updated:", values);
+    // dispatch({ type: 'SET_RESUME_DATA', payload: values }); // Optionally update context on every successful form internal submit/blur
     toast({
         title: "Resume Updated",
         description: "Your resume data has been updated in the form and preview.",
@@ -104,12 +103,12 @@ export default function ResumeBuilderPage() {
   const handlePrepareAndPrint = async () => {
     setIsPreparingPrint(true);
     try {
-      const isValid = await form.trigger();
+      const isValid = await form.trigger(); // Manually trigger validation for all fields
 
       if (!isValid) {
         toast({
           title: "Validation Error",
-          description: "Please correct the errors highlighted in the form before printing.",
+          description: "Please correct the errors highlighted in the form before generating the PDF.",
           variant: "destructive",
         });
         setIsPreparingPrint(false);
@@ -120,39 +119,70 @@ export default function ResumeBuilderPage() {
       const validationResult = ExtractResumeDataOutputSchema.safeParse(currentData);
 
       if (!validationResult.success) {
-        console.error("Final validation failed before printing:", validationResult.error.flatten());
+        console.error("Final validation failed before PDF generation:", validationResult.error.flatten());
         toast({
           title: "Data Incomplete or Invalid",
-          description: "Please ensure all required fields are filled correctly before printing.",
+          description: "Please ensure all required fields are filled correctly before generating the PDF.",
           variant: "destructive",
         });
         setIsPreparingPrint(false);
         return;
       }
       
+      // Update context with the validated data
       dispatch({ type: 'SET_RESUME_DATA', payload: validationResult.data });
       
-      // Allow a brief moment for context to update and UI to settle if necessary
-      // This can sometimes help if print is called too rapidly after state updates.
-      await new Promise(resolve => setTimeout(resolve, 50)); 
+      const element = previewRef.current;
+      if (element) {
+        const opt = {
+          margin:       [0.5, 0.5, 0.5, 0.5], // inches [top, left, bottom, right]
+          filename:     `${validationResult.data.personalDetails?.name?.replace(/\s+/g, '_') || 'resume'}_${new Date().toISOString().slice(0,10)}.pdf`,
+          image:        { type: 'jpeg', quality: 0.98 },
+          html2canvas:  { scale: 2, useCORS: true, logging: false },
+          jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
+          pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] as any } // Cast to any to avoid type issue with string array
+        };
+        
+        const previewSectionEl = document.getElementById('preview-section');
+        let originalOverflow = '';
+        let originalMaxHeight = '';
 
-      window.print();
+        if (previewSectionEl) {
+            originalOverflow = previewSectionEl.style.overflowY;
+            originalMaxHeight = previewSectionEl.style.maxHeight;
+            previewSectionEl.style.overflowY = 'visible'; // Ensure all content is capturable
+            previewSectionEl.style.maxHeight = 'none';    // Ensure all content is capturable
+        }
+
+        await html2pdf().from(element).set(opt).save();
+        
+        // Restore original styles
+        if (previewSectionEl) {
+            previewSectionEl.style.overflowY = originalOverflow;
+            previewSectionEl.style.maxHeight = originalMaxHeight;
+        }
+
+      } else {
+        toast({
+          title: "Preview Element Not Found",
+          description: "Could not find the resume preview to generate PDF.",
+          variant: "destructive",
+        });
+      }
 
     } catch (error) {
-      console.error("Error preparing for print:", error);
+      console.error("Error generating PDF with html2pdf.js:", error);
       toast({
-        title: "Print Error",
-        description: "An unexpected error occurred while preparing to print.",
+        title: "PDF Generation Error",
+        description: "An unexpected error occurred while generating the PDF.",
         variant: "destructive",
       });
     } finally {
-      // Ensure the loader is always turned off after attempting to print,
-      // regardless of whether window.print() succeeded or an error occurred.
-      // window.print() is blocking, so this will execute after the print dialog is closed.
       setIsPreparingPrint(false);
     }
   };
   
+  // For live preview, use safeParse to avoid crashing on invalid intermediate data
   const validationResultForPreview = ExtractResumeDataOutputSchema.safeParse(watchedData);
   const dataForPreview = validationResultForPreview.success
     ? validationResultForPreview.data
@@ -177,14 +207,14 @@ export default function ResumeBuilderPage() {
               className="w-full sm:w-auto"
             >
               {isPreparingPrint ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Printer className="mr-2 h-5 w-5" />}
-              {isPreparingPrint ? 'Preparing...' : 'Save as PDF / Print'}
+              {isPreparingPrint ? 'Generating PDF...' : 'Download as PDF'}
             </Button>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto p-4 md:p-8 print:p-0">
-        <div className="grid lg:grid-cols-2 gap-8 items-start print:grid-cols-1">
+        <div className="grid lg:grid-cols-2 gap-8 items-start print:hidden"> {/* Hide grid for print */}
           <section id="input-section" className="space-y-8 print:hidden">
             <Card className="shadow-lg">
               <CardHeader>
@@ -203,7 +233,7 @@ export default function ResumeBuilderPage() {
                 <CardTitle>Or, Build Your Resume Manually</CardTitle>
                  <CardDescription>
                   Fill in the details below. The preview will update as you type.
-                  If data is invalid, the preview may show default content, and errors will be highlighted. Printing requires valid data.
+                  If data is invalid, the preview may show default content. PDF generation requires valid data.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -218,11 +248,13 @@ export default function ResumeBuilderPage() {
             </Card>
           </section>
           
+          {/* This section is what html2pdf.js will capture, ensure its styles don't conflict during capture */}
           <section 
             id="preview-section" 
-            className="sticky top-[calc(theme(spacing.28)_+_1rem)] lg:top-28 max-h-[calc(100vh_-_theme(spacing.28)_-_2rem)] lg:max-h-[calc(100vh_-_8rem)] overflow-y-auto rounded-lg shadow-xl border bg-card print:!sticky print:!top-0 print:max-h-full print:overflow-visible print:shadow-none print:border-none print:bg-transparent print:m-0 print:p-0 print:col-span-2"
+            className="sticky top-[calc(theme(spacing.28)_+_1rem)] lg:top-28 max-h-[calc(100vh_-_theme(spacing.28)_-_2rem)] lg:max-h-[calc(100vh_-_8rem)] overflow-y-auto rounded-lg shadow-xl border bg-card 
+                       print:!static print:!top-0 print:!max-h-full print:!overflow-visible print:shadow-none print:border-none print:bg-transparent print:m-0 print:p-0 print:col-span-2"
           >
-             <ResumePreview data={dataForPreview} />
+             <ResumePreview ref={previewRef} data={dataForPreview} />
           </section>
         </div>
       </main>
@@ -232,4 +264,3 @@ export default function ResumeBuilderPage() {
     </div>
   );
 }
-

@@ -14,8 +14,8 @@ export default function ResumePrintPageObsolete() {
     <div className="flex flex-col items-center justify-center min-h-screen bg-muted p-8 text-center">
       <h1 className="text-3xl font-bold text-primary mb-4">Print Page (Obsolete)</h1>
       <p className="text-lg text-muted-foreground mb-6">
-        Resume printing is now handled directly on the main page.
-        This page is no longer used for the primary "Save as PDF / Print" functionality.
+        Resume PDF generation is now handled directly on the main page using html2pdf.js.
+        This page is no longer used for the primary "Download as PDF" functionality.
       </p>
       <Button asChild>
         <Link href="/">Go back to Resume Builder</Link>
