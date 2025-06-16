@@ -35,7 +35,7 @@ export default function ResumeBuilderPage() {
   const form = useForm<ExtractResumeDataOutput>({
     resolver: zodResolver(ExtractResumeDataOutputSchema),
     defaultValues: defaultResumeData,
-    mode: 'onBlur',
+    mode: 'onBlur', // Validate on blur
   });
 
   const watchedData = form.watch();
@@ -56,7 +56,12 @@ export default function ResumeBuilderPage() {
           variant: "destructive",
           duration: 7000,
         });
+        // Reset with default data, but also populate form with what was extracted, so user can see/fix
+        // form.reset(validationResult.error ? extractedData : defaultResumeData); // This might be too aggressive
         form.reset(defaultResumeData); 
+        // Or, try to set values field by field if possible, to preserve as much as possible,
+        // though Zod's .parse is all or nothing for the structure.
+
       } else {
         form.reset(validationResult.data);
         toast({
@@ -70,7 +75,12 @@ export default function ResumeBuilderPage() {
       console.error("Error extracting resume data:", error);
       let errorMessage = "Failed to extract data from resume. Please try again or fill manually.";
       if (error instanceof Error) {
-        errorMessage += ` Details: ${error.message}`;
+        // Check if it's a GenkitError with specific details
+        if ('details' in error && typeof (error as any).details === 'string') {
+          errorMessage += ` Details: ${(error as any).details}`;
+        } else {
+          errorMessage += ` Details: ${error.message}`;
+        }
       }
       toast({
         title: "Error",
@@ -85,58 +95,74 @@ export default function ResumeBuilderPage() {
   };
   
   const handleFormSave = (values: ExtractResumeDataOutput) => {
-    console.log("Resume data saved/updated (manual trigger):", values);
-    // Optionally, update context here if there's a manual "Save Form" button.
-    // For now, context is updated primarily before printing.
+    // This function is triggered by ResumeForm's internal onSubmit,
+    // which happens on blur if mode is onBlur, or on a dedicated save button if implemented.
+    // For now, it mainly serves as a placeholder if we had a manual save.
+    // The main data sync for printing happens in handlePrepareAndPrint.
+    console.log("Form data validated/updated:", values);
+    // Optionally update context, but better to do it right before print.
     toast({
         title: "Resume Updated",
         description: "Your resume data has been updated in the form and preview.",
     });
   };
 
-  const handlePrepareAndPrint = () => {
+  const handlePrepareAndPrint = async () => {
     setIsPreparingPrint(true);
-    try {
-      const currentData = form.getValues();
-      const validationResult = ExtractResumeDataOutputSchema.safeParse(currentData);
+    // Trigger validation for all fields
+    const isValid = await form.trigger();
 
-      if (!validationResult.success) {
-        console.error("Form validation failed for printing:", validationResult.error.flatten());
-        form.trigger(); 
-        toast({
-          title: "Validation Error",
-          description: "Please correct the errors in the form before printing.",
-          variant: "destructive",
-        });
-        setIsPreparingPrint(false);
-        return;
-      }
-      
-      // Update global context with validated data
-      dispatch({ type: 'SET_RESUME_DATA', payload: validationResult.data });
-      
-      const printWindow = window.open('/resume-print', '_blank');
-      if (printWindow) {
-        printWindow.focus();
-      } else {
-        toast({
-          title: "Popup Blocked?",
-          description: "Could not open print preview window. Please allow popups for this site.",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error("Error preparing data for print:", error);
+    if (!isValid) {
       toast({
-        title: "Error",
-        description: "Could not prepare data for printing.",
+        title: "Validation Error",
+        description: "Please correct the errors highlighted in the form before printing.",
         variant: "destructive",
       });
-    } finally {
-      setTimeout(() => setIsPreparingPrint(false), 1000); 
+      setIsPreparingPrint(false);
+      return;
     }
+
+    const currentData = form.getValues();
+    // Re-validate with safeParse to be absolutely sure, though form.trigger should suffice
+    const validationResult = ExtractResumeDataOutputSchema.safeParse(currentData);
+
+    if (!validationResult.success) {
+      console.error("Final validation failed before printing:", validationResult.error.flatten());
+      toast({
+        title: "Validation Error",
+        description: "There's an issue with the resume data. Please review the form.",
+        variant: "destructive",
+      });
+      setIsPreparingPrint(false);
+      return;
+    }
+    
+    // Update global context with validated data
+    dispatch({ type: 'SET_RESUME_DATA', payload: validationResult.data });
+    
+    // Allow a brief moment for context to update if any downstream effects, though usually synchronous
+    // await new Promise(resolve => setTimeout(resolve, 50)); 
+
+    try {
+      window.print();
+    } catch (printError) {
+      console.error("Error triggering print dialog:", printError);
+      toast({
+        title: "Print Error",
+        description: "Could not open print dialog. Please ensure popups are not blocked if your browser prompts.",
+        variant: "destructive",
+      });
+    }
+
+    // Adding a small delay to allow the print dialog to appear and potentially be processed
+    // before resetting the button state.
+    setTimeout(() => {
+        setIsPreparingPrint(false);
+    }, 1000); // 1 second delay
   };
   
+  // For the live preview, try to parse. If it fails (e.g. invalid URL mid-typing),
+  // show default data to prevent page crash. Form validation errors will guide user.
   const validationResultForPreview = ExtractResumeDataOutputSchema.safeParse(watchedData);
   const dataForPreview = validationResultForPreview.success
     ? validationResultForPreview.data
@@ -167,8 +193,8 @@ export default function ResumeBuilderPage() {
         </div>
       </header>
 
-      <main className="container mx-auto p-4 md:p-8">
-        <div className="grid lg:grid-cols-2 gap-8 items-start">
+      <main className="container mx-auto p-4 md:p-8 print:p-0">
+        <div className="grid lg:grid-cols-2 gap-8 items-start print:grid-cols-1"> {/* Adjust grid for print */}
           <section id="input-section" className="space-y-8 print:hidden">
             <Card className="shadow-lg">
               <CardHeader>
@@ -186,7 +212,8 @@ export default function ResumeBuilderPage() {
               <CardHeader>
                 <CardTitle>Or, Build Your Resume Manually</CardTitle>
                  <CardDescription>
-                  Fill in the details below. The preview will update as you type. If data seems invalid, the preview may show a default state.
+                  Fill in the details below. The preview will update as you type.
+                  If data is invalid for printing, the preview might show default content, and errors will be highlighted.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -203,7 +230,7 @@ export default function ResumeBuilderPage() {
           
           <section 
             id="preview-section" 
-            className="sticky top-[calc(theme(spacing.28)_+_1rem)] lg:top-28 max-h-[calc(100vh_-_theme(spacing.28)_-_2rem)] lg:max-h-[calc(100vh_-_8rem)] overflow-y-auto rounded-lg shadow-xl border bg-card make-static-for-print print:shadow-none print:border-none print:bg-transparent print:max-h-full print:overflow-visible"
+            className="sticky top-[calc(theme(spacing.28)_+_1rem)] lg:top-28 max-h-[calc(100vh_-_theme(spacing.28)_-_2rem)] lg:max-h-[calc(100vh_-_8rem)] overflow-y-auto rounded-lg shadow-xl border bg-card print:!sticky print:!top-0 print:max-h-full print:overflow-visible print:shadow-none print:border-none print:bg-transparent print:m-0 print:p-0 print:col-span-2"
           >
              <ResumePreview data={dataForPreview} />
           </section>
@@ -215,3 +242,4 @@ export default function ResumeBuilderPage() {
     </div>
   );
 }
+
