@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import html2pdf from 'html2pdf.js';
+// import html2pdf from 'html2pdf.js'; // Removed static import
 import { extractResumeData } from '@/ai/flows/extract-resume-data';
 import type { ExtractResumeDataOutput } from '@/types/resume';
 import { ExtractResumeDataOutputSchema, defaultResumeData } from '@/types/resume';
@@ -46,9 +46,11 @@ export default function ResumeBuilderPage() {
     setIsLoadingAI(true);
     try {
       const resumeDataUri = await fileToDataUri(file);
-      const extractedDataFromAI = await extractResumeData({ resumeDataUri });
+      const extractedRawData = await extractResumeData({ resumeDataUri });
       
-      const validationResult = ExtractResumeDataOutputSchema.safeParse(extractedDataFromAI || {});
+      // Parse the already transformed data from the AI flow
+      // (which should conform to ExtractResumeDataOutputSchema)
+      const validationResult = ExtractResumeDataOutputSchema.safeParse(extractedRawData || {});
       
       if (!validationResult.success) {
         console.error("Validation failed for AI extracted data:", validationResult.error.flatten());
@@ -58,8 +60,8 @@ export default function ResumeBuilderPage() {
           variant: "destructive",
           duration: 7000,
         });
-        // Reset with default data or whatever AI gave if partially useful
-        form.reset(extractedDataFromAI && typeof extractedDataFromAI === 'object' ? extractedDataFromAI : defaultResumeData);
+        // Reset with whatever AI gave if partially useful, or default
+        form.reset(extractedRawData && typeof extractedRawData === 'object' ? extractedRawData : defaultResumeData);
       } else {
         form.reset(validationResult.data);
         toast({
@@ -90,10 +92,7 @@ export default function ResumeBuilderPage() {
   const handleFormSave = (values: ExtractResumeDataOutput) => {
     // This function is called by ResumeForm's onSubmit, but since we trigger validation
     // before printing/downloading, its primary role here might be just for explicit saves if we had such a button.
-    // For now, it mainly serves to update the context if we were to call it directly.
-    // The main data update for printing happens in handlePrepareAndPrint.
     console.log("Form data validated/updated:", values);
-    // dispatch({ type: 'SET_RESUME_DATA', payload: values }); // Optionally update context on every successful form internal submit/blur
     toast({
         title: "Resume Updated",
         description: "Your resume data has been updated in the form and preview.",
@@ -103,7 +102,7 @@ export default function ResumeBuilderPage() {
   const handlePrepareAndPrint = async () => {
     setIsPreparingPrint(true);
     try {
-      const isValid = await form.trigger(); // Manually trigger validation for all fields
+      const isValid = await form.trigger(); 
 
       if (!isValid) {
         toast({
@@ -129,18 +128,19 @@ export default function ResumeBuilderPage() {
         return;
       }
       
-      // Update context with the validated data
       dispatch({ type: 'SET_RESUME_DATA', payload: validationResult.data });
       
       const element = previewRef.current;
       if (element) {
+        const html2pdf = (await import('html2pdf.js')).default; // Dynamic import
+
         const opt = {
           margin:       [0.5, 0.5, 0.5, 0.5], // inches [top, left, bottom, right]
           filename:     `${validationResult.data.personalDetails?.name?.replace(/\s+/g, '_') || 'resume'}_${new Date().toISOString().slice(0,10)}.pdf`,
           image:        { type: 'jpeg', quality: 0.98 },
           html2canvas:  { scale: 2, useCORS: true, logging: false },
           jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
-          pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] as any } // Cast to any to avoid type issue with string array
+          pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] as any } 
         };
         
         const previewSectionEl = document.getElementById('preview-section');
@@ -150,13 +150,12 @@ export default function ResumeBuilderPage() {
         if (previewSectionEl) {
             originalOverflow = previewSectionEl.style.overflowY;
             originalMaxHeight = previewSectionEl.style.maxHeight;
-            previewSectionEl.style.overflowY = 'visible'; // Ensure all content is capturable
-            previewSectionEl.style.maxHeight = 'none';    // Ensure all content is capturable
+            previewSectionEl.style.overflowY = 'visible'; 
+            previewSectionEl.style.maxHeight = 'none';    
         }
 
         await html2pdf().from(element).set(opt).save();
         
-        // Restore original styles
         if (previewSectionEl) {
             previewSectionEl.style.overflowY = originalOverflow;
             previewSectionEl.style.maxHeight = originalMaxHeight;
@@ -183,9 +182,10 @@ export default function ResumeBuilderPage() {
   };
   
   // For live preview, use safeParse to avoid crashing on invalid intermediate data
-  const validationResultForPreview = ExtractResumeDataOutputSchema.safeParse(watchedData);
-  const dataForPreview = validationResultForPreview.success
-    ? validationResultForPreview.data
+  // but also show default data if parse fails to avoid blank preview during typing
+  const safeParseResult = ExtractResumeDataOutputSchema.safeParse(watchedData);
+  const dataForPreview = safeParseResult.success
+    ? safeParseResult.data
     : defaultResumeData;
 
 
@@ -207,14 +207,14 @@ export default function ResumeBuilderPage() {
               className="w-full sm:w-auto"
             >
               {isPreparingPrint ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Printer className="mr-2 h-5 w-5" />}
-              {isPreparingPrint ? 'Generating PDF...' : 'Download as PDF'}
+              {isPreparingPrint ? 'Generating PDF...' : 'Save as PDF'}
             </Button>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto p-4 md:p-8 print:p-0">
-        <div className="grid lg:grid-cols-2 gap-8 items-start print:hidden"> {/* Hide grid for print */}
+        <div className="grid lg:grid-cols-2 gap-8 items-start print:hidden print:grid-cols-1"> {/* Hide grid for print */}
           <section id="input-section" className="space-y-8 print:hidden">
             <Card className="shadow-lg">
               <CardHeader>
@@ -248,7 +248,6 @@ export default function ResumeBuilderPage() {
             </Card>
           </section>
           
-          {/* This section is what html2pdf.js will capture, ensure its styles don't conflict during capture */}
           <section 
             id="preview-section" 
             className="sticky top-[calc(theme(spacing.28)_+_1rem)] lg:top-28 max-h-[calc(100vh_-_theme(spacing.28)_-_2rem)] lg:max-h-[calc(100vh_-_8rem)] overflow-y-auto rounded-lg shadow-xl border bg-card 
@@ -264,3 +263,4 @@ export default function ResumeBuilderPage() {
     </div>
   );
 }
+
