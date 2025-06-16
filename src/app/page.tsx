@@ -6,15 +6,15 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { extractResumeData } from '@/ai/flows/extract-resume-data';
 import type { ExtractResumeDataOutput } from '@/types/resume';
-import { ExtractResumeDataOutputSchema, defaultResumeData } from '@/types/resume';
+import { ExtractResumeDataOutputSchema, defaultResumeData, LLMResumeDataOutputSchema } from '@/types/resume';
 import { ResumeForm } from '@/components/resume-form';
 import { FileUpload } from '@/components/file-upload';
 import { ResumePreview } from '@/components/resume-preview';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Printer, FileText } from 'lucide-react';
+
 
 const fileToDataUri = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -33,7 +33,7 @@ export default function ResumeBuilderPage() {
   const form = useForm<ExtractResumeDataOutput>({
     resolver: zodResolver(ExtractResumeDataOutputSchema),
     defaultValues: defaultResumeData,
-    mode: 'onBlur',
+    mode: 'onBlur', // Validate on blur
   });
 
   const watchedData = form.watch();
@@ -42,23 +42,22 @@ export default function ResumeBuilderPage() {
     setIsLoadingAI(true);
     try {
       const resumeDataUri = await fileToDataUri(file);
-      // The `extractResumeData` flow already returns data conforming to `ExtractResumeDataOutputSchema`
-      const extractedDataFromAI = await extractResumeData({ resumeDataUri });
-      
-      // Validate and parse the data received from the AI flow using the final application schema.
-      // This step ensures the data is in the correct shape for the form and applies any defaults.
-      const validationResult = ExtractResumeDataOutputSchema.safeParse(extractedDataFromAI || defaultResumeData);
+      const extractedRawData = await extractResumeData({ resumeDataUri });
+
+      // The extractResumeData flow already returns data transformed to ExtractResumeDataOutputSchema.
+      // We just need to parse it to ensure full validation and application of defaults if any part was missed by AI.
+      const validationResult = ExtractResumeDataOutputSchema.safeParse(extractedRawData || defaultResumeData);
       
       if (!validationResult.success) {
         console.error("Validation failed for AI extracted data:", validationResult.error.flatten());
         toast({
           title: "Data Parsing Error",
-          description: "There was an issue processing some fields from the extracted resume data. Please review the form.",
+          description: "There was an issue processing some fields from the extracted resume data. Please review the form or try again.",
           variant: "destructive",
           duration: 7000,
         });
         // Reset with potentially partial but valid data or defaults
-        form.reset(validationResult.error ? defaultResumeData : (extractedDataFromAI || defaultResumeData));
+        form.reset(defaultResumeData); // Fallback to default if AI data is problematic
       } else {
         form.reset(validationResult.data);
         toast({
@@ -80,8 +79,7 @@ export default function ResumeBuilderPage() {
         variant: "destructive",
         duration: 7000,
       });
-      // Optionally reset to default if parsing fails significantly
-      // form.reset(defaultResumeData);
+      form.reset(defaultResumeData);
     } finally {
       setIsLoadingAI(false);
     }
@@ -103,6 +101,7 @@ export default function ResumeBuilderPage() {
 
       if (!validationResult.success) {
         console.error("Form validation failed for printing:", validationResult.error.flatten());
+        // Trigger validation messages in the form
         form.trigger(); 
         toast({
           title: "Validation Error",
@@ -113,6 +112,7 @@ export default function ResumeBuilderPage() {
         return;
       }
       
+      // If validation is successful, proceed
       localStorage.setItem('resumePrintData', JSON.stringify(validationResult.data));
       
       const printWindow = window.open('/resume-print', '_blank');
@@ -133,27 +133,36 @@ export default function ResumeBuilderPage() {
         variant: "destructive",
       });
     } finally {
-      setTimeout(() => setIsPreparingPrint(false), 1000);
+      // Add a slight delay to allow the new tab to open before resetting loading state
+      setTimeout(() => setIsPreparingPrint(false), 1000); 
     }
   };
   
-  const dataForPreviewResult = ExtractResumeDataOutputSchema.safeParse(watchedData);
-  const dataForPreview = dataForPreviewResult.success ? dataForPreviewResult.data : watchedData;
+  // For the live preview on the main page:
+  // Only show data in preview if it's valid according to the schema. Otherwise, show default (empty) data.
+  // This makes the preview's behavior consistent with the print functionality's data requirements.
+  const validationResultForPreview = ExtractResumeDataOutputSchema.safeParse(watchedData);
+  const dataForPreview = validationResultForPreview.success
+    ? validationResultForPreview.data
+    : defaultResumeData;
+
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header id="page-header" className="py-6 px-4 md:px-8 bg-card shadow-md sticky top-0 z-50 print:hidden">
-        <div className="container mx-auto flex items-center justify-between">
+        <div className="container mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <FileText className="h-8 w-8 text-primary" />
             <h1 className="text-3xl font-bold text-primary">ResumeAI</h1>
           </div>
+          
           <div className="flex items-center gap-4">
             <Button 
               onClick={handlePrepareAndPrint} 
               variant="default" 
               size="lg"
               disabled={isPreparingPrint || isLoadingAI}
+              className="w-full sm:w-auto"
             >
               {isPreparingPrint ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Printer className="mr-2 h-5 w-5" />}
               {isPreparingPrint ? 'Preparing...' : 'Save as PDF / Print'}
@@ -181,7 +190,7 @@ export default function ResumeBuilderPage() {
               <CardHeader>
                 <CardTitle>Or, Build Your Resume Manually</CardTitle>
                  <CardDescription>
-                  Fill in the details below. The preview will update as you type.
+                  Fill in the details below. The preview will update as you type. If data seems invalid, the preview may show a default state.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -196,7 +205,12 @@ export default function ResumeBuilderPage() {
             </Card>
           </section>
 
-          <section id="preview-section" className="sticky top-28 max-h-[calc(100vh-8rem)] overflow-y-auto rounded-lg shadow-xl border bg-card make-static-for-print print:shadow-none print:border-none print:bg-transparent print:max-h-full print:overflow-visible">
+          {/* Sticky Preview Section */}
+          {/* Ensure top value accounts for potentially taller sticky header on mobile */}
+          <section 
+            id="preview-section" 
+            className="sticky top-[calc(theme(spacing.28)_+_1rem)] lg:top-28 max-h-[calc(100vh_-_theme(spacing.28)_-_2rem)] lg:max-h-[calc(100vh_-_8rem)] overflow-y-auto rounded-lg shadow-xl border bg-card make-static-for-print print:shadow-none print:border-none print:bg-transparent print:max-h-full print:overflow-visible"
+          >
              <ResumePreview data={dataForPreview} />
           </section>
         </div>
